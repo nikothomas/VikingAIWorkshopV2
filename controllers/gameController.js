@@ -52,7 +52,7 @@ exports.resetGame = async () => {
         const { error: deleteUserError } = await supabase
             .from('vk_demo_db')
             .delete()
-            .not('group_number', 'eq', -2); // Do not delete the final node bot
+            .not('group_number', 'eq', 100);
 
         if (deleteUserError) throw deleteUserError;
 
@@ -161,7 +161,6 @@ exports.startGame = async () => {
     }
 };
 
-// Fetch data for Group 1 (Image URL)
 exports.getGroup1Image = async (req, res) => {
     const supabase = getSupabase();
 
@@ -173,7 +172,7 @@ exports.getGroup1Image = async (req, res) => {
 
         const { data: gameState, error: gameStateError } = await supabase
             .from('game_state')
-            .select('current_image_url, is_round_complete, game_over')
+            .select('current_round, current_image_url, is_round_complete, game_over')
             .order('current_round', { ascending: false })
             .limit(1)
             .single();
@@ -189,6 +188,7 @@ exports.getGroup1Image = async (req, res) => {
         }
 
         res.json({
+            round: gameState.current_round,
             image_url: gameState.current_image_url
         });
     } catch (err) {
@@ -255,21 +255,49 @@ exports.getGroup2Data = async (req, res) => {
     }
 };
 
-// Submitting Group Predictions
 exports.submitPrediction = async (req, res, groupNumber) => {
     const { userID } = req.session;
     const { prediction, round } = req.body;
     const supabase = getSupabase();
 
+    console.log(`Received prediction submission: userID=${userID}, groupNumber=${groupNumber}, prediction=${prediction}, round=${round}`);
+
+    // Validate round
+    if (round === undefined || round === null || isNaN(parseInt(round))) {
+        console.error(`Invalid round: ${round}`);
+        return res.status(400).json({ error: 'Invalid or missing round number' });
+    }
+
+    const roundNumber = parseInt(round);
+
     try {
-        const { data: gameState } = await supabase
+        // Fetch the current game state
+        const { data: gameState, error: gameStateError } = await supabase
             .from('game_state')
             .select(`current_round, group${groupNumber}_predictions`)
-            .eq('current_round', round)
+            .eq('current_round', roundNumber)
             .single();
 
-        if (gameState.current_round !== round) {
+        if (gameStateError) {
+            console.error('Error fetching game state:', gameStateError);
+            return res.status(500).json({ error: 'Failed to fetch game state', details: gameStateError });
+        }
+
+        if (!gameState) {
+            console.error(`No game state found for round ${roundNumber}`);
+            return res.status(404).json({ error: 'No active game found for the specified round' });
+        }
+
+        if (gameState.current_round !== roundNumber) {
+            console.error(`Round mismatch: current=${gameState.current_round}, submitted=${roundNumber}`);
             return res.status(400).json({ error: 'Round mismatch' });
+        }
+
+        // Check if the user has already predicted
+        const alreadyPredicted = gameState[`group${groupNumber}_predictions`].some(p => p.user_id === userID);
+        if (alreadyPredicted) {
+            console.error(`User ${userID} has already predicted for round ${roundNumber}`);
+            return res.status(400).json({ error: 'User has already submitted a prediction for this round' });
         }
 
         const updatedPredictions = [
@@ -277,27 +305,33 @@ exports.submitPrediction = async (req, res, groupNumber) => {
             { user_id: userID, prediction }
         ];
 
-        const updateData = {};
-        updateData[`group${groupNumber}_predictions`] = updatedPredictions;
-        if (groupNumber === 1) {
-            updateData.group1_complete = true;
+        // Update the game state with the new prediction
+        const { error: updateError } = await supabase
+            .from('game_state')
+            .update({ [`group${groupNumber}_predictions`]: updatedPredictions })
+            .eq('current_round', roundNumber);
+
+        if (updateError) {
+            console.error('Error updating game state:', updateError);
+            return res.status(500).json({ error: 'Failed to update game state', details: updateError });
         }
 
-        // Update the game state with the new predictions
-        await supabase
-            .from('game_state')
-            .update(updateData)
-            .eq('current_round', round);
-
-        // Mark that the user has given input
-        await supabase
+        // Mark that the user has given input (optional, based on your requirements)
+        const { error: userUpdateError } = await supabase
             .from('vk_demo_db')
             .update({ has_given_input: true })
             .eq('id', userID);
 
+        if (userUpdateError) {
+            console.error('Error updating user input status:', userUpdateError);
+            // We'll continue even if this fails, as it's not critical
+        }
+
+        console.log(`Prediction submitted successfully: userID=${userID}, groupNumber=${groupNumber}, round=${roundNumber}`);
         res.json({ message: 'Prediction submitted successfully' });
     } catch (err) {
-        handleError(res, err, `Failed to submit Group ${groupNumber} prediction`);
+        console.error(`Failed to submit Group ${groupNumber} prediction:`, err);
+        res.status(500).json({ error: `Failed to submit Group ${groupNumber} prediction`, details: err.message });
     }
 };
 

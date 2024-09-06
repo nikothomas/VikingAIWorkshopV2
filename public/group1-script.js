@@ -27,7 +27,47 @@ document.addEventListener('DOMContentLoaded', () => {
                     currentRound = data.round;
                     currentImageUrl = data.image_url;
                     updateGameImage(data.image_url);
+                    console.log(`Updated current round to: ${currentRound}`);
                 }
+            })
+            .catch(handleError);
+    }
+
+    function getCurrentRound() {
+        return fetch('/api/group1/get_image')
+            .then(response => response.json())
+            .then(data => {
+                if (data.round) {
+                    console.log(`Fetched current round: ${data.round}`);
+                    return data.round;
+                } else {
+                    throw new Error('Failed to fetch current round');
+                }
+            });
+    }
+
+    function submitPrediction(prediction) {
+        setLoading(true, 'Submitting prediction...');
+        getCurrentRound()
+            .then(round => {
+                console.log(`Submitting prediction for round: ${round}`);
+                return fetch('/api/group1/submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prediction, round })
+                });
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(`HTTP error! status: ${response.status}, message: ${text}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log(data.message);
+                showWaiting('Waiting for next round...');
             })
             .catch(handleError);
     }
@@ -65,25 +105,10 @@ document.addEventListener('DOMContentLoaded', () => {
         buttonContainer.classList.remove('hidden');
     }
 
-    function submitPrediction(prediction) {
-        setLoading(true, 'Submitting prediction...');
-        fetch('/api/group1/submit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prediction, round: currentRound })
-        })
-            .then(response => response.json())
-            .then(data => {
-                console.log(data.message);
-                showWaiting('Waiting for next round...');
-            })
-            .catch(handleError);
-    }
-
     function handleError(error) {
         console.error('Error:', error);
         setLoading(false);
-        alert('An error occurred. Please try again.');
+        alert(`An error occurred: ${error.message}. Please try again.`);
     }
 
     document.getElementById('phytoplankton-btn').addEventListener('click', () => submitPrediction(1));

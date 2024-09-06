@@ -1,10 +1,13 @@
+const {getSupabase} = require("../db/supabase");
+const { v4: uuidv4 } = require('uuid');
+
 exports.uploadImage = async (req, res) => {
     try {
         const supabase = getSupabase();
         const file = req.file;
         const correctAnswer = parseInt(req.body.correctAnswer);
 
-        if (!file || ![0, 1].includes(correctAnswer)) {
+        if (!file || ![-1, 1].includes(correctAnswer)) {
             return res.status(400).json({ error: 'Invalid input' });
         }
 

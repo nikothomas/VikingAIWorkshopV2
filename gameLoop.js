@@ -76,7 +76,9 @@ async function makeFinalNodeBotPrediction(round) {
             .eq('current_round', round)
             .single();
 
-        if (gameState.final_prediction !== null) return console.log(`Final prediction for round ${round} already made`);
+        if (gameState.final_prediction !== null) {
+            return console.log(`Final prediction for round ${round} already made`);
+        }
 
         const { data: connections } = await supabase
             .from('connections')
@@ -84,16 +86,18 @@ async function makeFinalNodeBotPrediction(round) {
             .eq('target_user_id', (await supabase.from('vk_demo_db').select('id').eq('group_number', -2).single()).data.id);
 
         let weightedSum = 0;
-        let totalWeight = 0;
         for (const prediction of gameState.group2_predictions) {
             const connection = connections.find(c => c.source_user_id === prediction.user_id);
             if (connection) {
                 weightedSum += prediction.prediction * connection.weight;
-                totalWeight += connection.weight;
             }
         }
 
-        const finalPrediction = weightedSum / totalWeight > 0 ? 1 : -1;
+        // Apply sigmoid to convert weighted sum to a probability
+        const sigmoidResult = sigmoid(weightedSum);
+
+        // Threshold to decide between 1 (phytoplankton) or -1 (not phytoplankton)
+        const finalPrediction = sigmoidResult >= 0.5 ? 1 : -1;
 
         const { data: correctAnswer } = await supabase
             .from('images')
@@ -102,6 +106,13 @@ async function makeFinalNodeBotPrediction(round) {
             .single();
 
         const isCorrect = finalPrediction === correctAnswer.correct_answer;
+
+        await supabase
+            .from('vk_demo_db')
+            .update({
+                has_given_input: true
+            })
+            .eq('group_number', '-2')
 
         await supabase
             .from('game_state')
@@ -145,15 +156,30 @@ async function backpropagateWeightsForRound(round) {
 
         const finalNodeId = (await supabase.from('vk_demo_db').select('id').eq('group_number', -2).single()).data.id;
 
+        const learningRate = 0.1;
+        const target = correctAnswer.correct_answer === gameState.final_prediction ? 1 : -1;
+
+        // Calculate error for the final output
+        const outputError = target - (gameState.final_prediction === correctAnswer.correct_answer ? 1 : -1);
+
         // Update weights for connections between Group 2 and Final Node
         for (const prediction of gameState.group2_predictions) {
             const connection = connections.find(c => c.source_user_id === prediction.user_id && c.target_user_id === finalNodeId);
             if (connection) {
-                const weightUpdate = (correctAnswer.correct_answer - gameState.final_prediction) * prediction.prediction * 0.1;
+                const weightUpdate = learningRate * outputError * prediction.prediction;
                 await supabase
                     .from('connections')
                     .update({ weight: connection.weight + weightUpdate })
                     .eq('id', connection.id);
+            }
+        }
+
+        // Calculate errors for Group 2 nodes
+        const group2Errors = {};
+        for (const g2Prediction of gameState.group2_predictions) {
+            const connection = connections.find(c => c.source_user_id === g2Prediction.user_id && c.target_user_id === finalNodeId);
+            if (connection) {
+                group2Errors[g2Prediction.user_id] = outputError * connection.weight;
             }
         }
 
@@ -162,7 +188,8 @@ async function backpropagateWeightsForRound(round) {
             for (const g2Prediction of gameState.group2_predictions) {
                 const connection = connections.find(c => c.source_user_id === g1Prediction.user_id && c.target_user_id === g2Prediction.user_id);
                 if (connection) {
-                    const weightUpdate = (g2Prediction.prediction - g1Prediction.prediction) * g1Prediction.prediction * 0.1;
+                    const g2Error = group2Errors[g2Prediction.user_id];
+                    const weightUpdate = learningRate * g2Error * g1Prediction.prediction;
                     await supabase
                         .from('connections')
                         .update({ weight: connection.weight + weightUpdate })
@@ -245,6 +272,11 @@ async function submitBotPrediction(botId, round, groupNumber) {
             .update({ [`group${groupNumber}_predictions`]: updatedPredictions })
             .eq('current_round', round);
 
+        await supabase
+            .from('vk_demo_db')
+            .update({ has_given_input: true })
+            .eq('id', botId);
+
         console.log(`Bot ${botId} prediction submitted for round ${round}`);
     } catch (error) {
         console.error(`Error submitting prediction for bot ${botId}:`, error);
@@ -295,6 +327,11 @@ async function startNewRound() {
             })
             .select()
             .single();
+
+        await supabase
+            .from('vk_demo_db')
+            .update({ has_given_input: false })
+            .neq('group_number', 100);
 
         console.log('New round started');
     } catch (error) {
@@ -382,6 +419,10 @@ async function endGame() {
         console.error('Error ending game:', error);
         throw error;
     }
+}
+
+function sigmoid(x) {
+    return 1 / (1 + Math.exp(-x));
 }
 
 module.exports = {

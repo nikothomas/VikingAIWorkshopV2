@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    const POLL_INTERVAL = 1000; // Poll every 1 seconds
+    const POLL_INTERVAL = 1000; // Poll every 1 second
     let svg = createSVG();
 
     let previousData = { nodes: [], links: [] }; // Store previous state
@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateNetworkVisualization(svg, data);
     previousData = data; // Store initial state
 
-    // Polling to update the network visualization every 8 seconds
+    // Polling to update the network visualization every second
     setInterval(async () => {
         data = await fetchData();
         if (hasDataChanged(previousData, data)) {
@@ -77,23 +77,38 @@ function updateNetworkVisualization(containerGroup, data) {
     const nodeMap = new Map(data.nodes.map(node => [node.id, node]));
     const links = data.links.map(link => ({
         source: nodeMap.get(link.source),
-        target: nodeMap.get(link.target)
+        target: nodeMap.get(link.target),
+        weight: link.weight
     })).filter(link => link.source && link.target);
+
+    // Calculate the range of weights
+    const weights = links.map(l => l.weight);
+    const minWeight = Math.min(...weights);
+    const maxWeight = Math.max(...weights);
+
+    // Create a scale for line thickness
+    const thicknessScale = d3.scaleLinear()
+        .domain([minWeight, maxWeight])
+        .range([1, 10]); // Adjust these values to change the min and max thickness
 
     const link = containerGroup.selectAll('.link')
         .data(links, d => `${d.source.id}-${d.target.id}`);
 
     link.exit().remove();
 
-    link.enter().append('line')
-        .attr('class', 'link')
-        .merge(link)
+    const linkEnter = link.enter().append('line')
+        .attr('class', 'link');
+
+    linkEnter.merge(link)
+        .transition()
+        .duration(300)
         .attr('x1', d => d.source.x)
         .attr('y1', d => d.source.y)
         .attr('x2', d => d.target.x)
         .attr('y2', d => d.target.y)
         .attr('stroke', '#999')
-        .attr('stroke-opacity', 0.6);
+        .attr('stroke-opacity', 0.6)
+        .attr('stroke-width', d => thicknessScale(d.weight));
 
     const node = containerGroup.selectAll('.node')
         .data(data.nodes, d => d.id);
@@ -101,58 +116,27 @@ function updateNetworkVisualization(containerGroup, data) {
     node.exit().remove();
 
     const nodeEnter = node.enter().append('g')
-        .attr('class', 'node')
-        .on('mouseover', mouseover)
-        .on('mousemove', mousemove)
-        .on('mouseleave', mouseleave);
+        .attr('class', 'node');
 
     nodeEnter.append('text')
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'central')
         .attr('font-family', 'FontAwesome')
         .attr('font-size', '20px')
-        .attr('fill', d => d.hasGivenInput ? 'green' : 'red')
         .text(d => d.icon);
 
-    containerGroup.selectAll('.node')
+    // Update both new and existing nodes
+    const allNodes = nodeEnter.merge(node);
+
+    allNodes.transition()
+        .duration(300)
         .attr('transform', d => `translate(${d.x},${d.y})`);
-}
 
-// Tooltip styling and creation
-const Tooltip = d3.select('body')
-    .append('div')
-    .style('opacity', 0)
-    .attr('class', 'tooltip')
-    .style('background-color', 'white')
-    .style('border', 'solid')
-    .style('border-width', '2px')
-    .style('border-radius', '5px')
-    .style('padding', '5px');
-
-// Tooltip functions
-function mouseover(event, d) {
-    Tooltip.style('opacity', 1);
-    d3.select(this).style('stroke', 'black').style('opacity', 1);
-}
-
-function mousemove(event, d) {
-    const inboundLinks = data.links.filter(link => link.target === d.id);
-    const outboundLinks = data.links.filter(link => link.source === d.id);
-
-    const inboundIcons = inboundLinks.map(link => data.nodes.find(n => n.id === link.source).icon).join(' ');
-    const outboundIcons = outboundLinks.map(link => data.nodes.find(n => n.id === link.target).icon).join(' ');
-
-    const tooltipText = `Inbound: ${inboundIcons} \nOutbound: ${outboundIcons} \nWeight: ${d.weight || 0}`;
-
-    Tooltip
-        .html(tooltipText)
-        .style('left', (event.pageX + 10) + 'px')
-        .style('top', (event.pageY) + 'px');
-}
-
-function mouseleave(event, d) {
-    Tooltip.style('opacity', 0);
-    d3.select(this).style('stroke', 'none').style('opacity', 0.8);
+    allNodes.select('text')
+        .transition()
+        .duration(300)
+        .attr('fill', d => d.hasGivenInput ? 'green' : 'red')
+        .text(d => d.icon);
 }
 
 function hasDataChanged(prevData, newData) {
@@ -179,8 +163,8 @@ function hasNodesChanged(prevNodes, newNodes) {
 function hasLinksChanged(prevLinks, newLinks) {
     if (prevLinks.length !== newLinks.length) return true;
 
-    const prevLinkSet = new Set(prevLinks.map(link => `${link.source}-${link.target}`));
-    const newLinkSet = new Set(newLinks.map(link => `${link.source}-${link.target}`));
+    const prevLinkSet = new Set(prevLinks.map(link => `${link.source}-${link.target}-${link.weight}`));
+    const newLinkSet = new Set(newLinks.map(link => `${link.source}-${link.target}-${link.weight}`));
 
     return Array.from(newLinkSet).some(link => !prevLinkSet.has(link));
 }
