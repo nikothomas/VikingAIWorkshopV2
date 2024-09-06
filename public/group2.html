@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Group 2: Prediction</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        #prediction-display {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            margin: 20px auto;
+            transition: background-color 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Group 2: Prediction</h1>
+
+    <div id="prediction-container" class="hidden">
+        <div id="prediction-display"></div>
+        <p>Your Weight: <span id="weight" class="highlight">0.00</span></p>
+
+        <div class="button-container">
+            <button id="predict-phytoplankton-btn">Predict Phytoplankton</button>
+            <button id="predict-non-phytoplankton-btn">Predict Not Phytoplankton</button>
+        </div>
+    </div>
+
+    <div id="spinner-container" class="spinner-container hidden">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+    </div>
+</div>
+
+<script src="/group2-script.js"></script>
+</body>
+</html>

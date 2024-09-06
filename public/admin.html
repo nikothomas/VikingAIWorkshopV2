@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Phytoplankton Identification Game</title>
+    <link rel="stylesheet" href="/admin-styles.css">
+</head>
+<body>
+<div class="container">
+    <h1>Admin Panel</h1>
+
+    <div id="assign-result" class="status-message"></div>
+
+    <div class="game-control">
+        <h2>Game Control</h2>
+        <button id="start-game">Start Game</button>
+        <button id="create-final-node-bot">Create Final Node Bot</button>
+        <button id="reset-game-btn">Reset Game</button>
+        <div id="game-stats"></div>
+        <div class="final-node-status">
+            <h3>Final Node Bot Status</h3>
+            <p id="final-node-info">Checking status...</p>
+        </div>
+    </div>
+
+    <div class="bot-control">
+        <h2>Bot Control</h2>
+        <form id="create-bots-form">
+            <select id="bot-group" required>
+                <option value="1">Group 1</option>
+                <option value="2">Group 2</option>
+            </select>
+            <input type="number" id="bot-count" min="1" max="10" value="1" required>
+            <button type="submit">Create Bots</button>
+        </form>
+        <div id="bot-status" class="status-message"></div>
+    </div>
+
+    <div class="user-management">
+        <h2>User Management</h2>
+        <div class="user-lists">
+            <div class="user-column">
+                <h3>Waiting for Assignment</h3>
+                <ul id="waiting-users-list" class="user-list"></ul>
+            </div>
+            <div class="user-column">
+                <h3>Group 1 Users (<span id="group1-count">0</span>)</h3>
+                <ul id="group1-users" class="user-list"></ul>
+            </div>
+            <div class="user-column">
+                <h3>Group 2 Users (<span id="group2-count">0</span>)</h3>
+                <ul id="group2-users" class="user-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="image-upload">
+        <h2>Upload New Image</h2>
+        <form id="image-upload-form">
+            <input type="file" id="image-file" accept="image/*" required>
+            <select id="correct-answer" required>
+                <option value="">Select correct answer</option>
+                <option value="0">Not Phytoplankton</option>
+                <option value="1">Phytoplankton</option>
+            </select>
+            <button type="submit">Upload Image</button>
+        </form>
+        <div id="upload-status" class="status-message"></div>
+    </div>
+</div>
+<script src="/admin.js"></script>
+</body>
+</html>

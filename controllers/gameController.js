@@ -1,0 +1,338 @@
+const { getSupabase } = require('../db/supabase');
+const { resetGame } = require("./adminController");
+
+const handleError = (res, error, message) => {
+    console.error(message, error);
+    res.status(500).json({ error: message });
+};
+
+async function checkGameStarted() {
+    const supabase = getSupabase();
+    try {
+        const { data, error } = await supabase
+            .from('game_state')
+            .select('game_started')
+            .limit(1)
+            .single();
+
+        if (error) throw error;
+        return data.game_started;
+    } catch (err) {
+        console.error('Error checking game state:', err);
+        return false;
+    }
+}
+
+exports.checkGameStatus = async (req, res) => {
+    const supabase = getSupabase();
+
+    try {
+        const { data: gameState, error: gameStateError } = await supabase
+            .from('game_state')
+            .select('game_started, game_over')
+            .limit(1)
+            .single();
+
+        if (gameStateError) throw gameStateError;
+
+        res.json({
+            gameStarted: gameState.game_started,
+            gameOver: gameState.game_over
+        });
+    } catch (err) {
+        handleError(res, err, 'Failed to check game status');
+    }
+};
+
+exports.resetGame = async () => {
+    const supabase = getSupabase();
+
+    try {
+        // Delete all users except the final node bot
+        const { error: deleteUserError } = await supabase
+            .from('vk_demo_db')
+            .delete()
+            .not('group_number', 'eq', -2); // Do not delete the final node bot
+
+        if (deleteUserError) throw deleteUserError;
+
+        // Reset all used images
+        const { error: imageError } = await supabase
+            .from('images')
+            .update({ used: false })
+            .eq('used', true);
+
+        if (imageError) throw imageError;
+
+        // Delete all game states
+        const { error: deleteGameStateError } = await supabase
+            .from('game_state')
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000');
+
+        if (deleteGameStateError) throw deleteGameStateError;
+
+        // Create a new initial game state
+        const { data: newGameState, error: insertError } = await supabase
+            .from('game_state')
+            .insert({
+                current_round: 0,
+                current_image_id: null,
+                current_image_url: null,
+                group1_predictions: [],
+                group2_predictions: [],
+                is_round_complete: true,
+                game_started: false,
+                game_over: false,
+                is_weights_updated: false
+            })
+            .select()
+            .single();
+
+        if (insertError) throw insertError;
+
+        return {
+            message: 'Game reset successfully. All users deleted except the final node bot. All used images reset to unused. Ready to start a new game.',
+            newGameState
+        };
+    } catch (error) {
+        console.error('Error resetting game:', error);
+        throw error;
+    }
+};
+
+exports.startGame = async () => {
+    const supabase = getSupabase();
+    try {
+        // Get the current game state
+        const { data: currentState, error: stateError } = await supabase
+            .from('game_state')
+            .select('*')
+            .single();
+
+        if (stateError) throw stateError;
+
+        if (currentState.game_started) {
+            return { message: 'Game was already started' };
+        }
+
+        // Get an unused image
+        const { data: newImage, error: imageError } = await supabase
+            .from('images')
+            .select('id, url')
+            .eq('used', false)
+            .limit(1)
+            .single();
+
+        if (imageError || !newImage) {
+            return { message: 'No available images. Please upload images before starting the game.' };
+        }
+
+        // Mark the image as used
+        await supabase
+            .from('images')
+            .update({ used: true })
+            .eq('id', newImage.id);
+
+        // Update the game state
+        const { data: updatedState, error: updateError } = await supabase
+            .from('game_state')
+            .update({
+                current_round: 1,
+                current_image_id: newImage.id,
+                current_image_url: newImage.url,
+                group1_predictions: [],
+                group2_predictions: [],
+                is_round_complete: false,
+                game_started: true,
+                is_weights_updated: false
+            })
+            .eq('id', currentState.id)
+            .select()
+            .single();
+
+        if (updateError) throw updateError;
+
+        console.log('Game started successfully');
+        return { message: 'Game started successfully', newState: updatedState };
+    } catch (err) {
+        console.error('Error starting game:', err);
+        throw err;
+    }
+};
+
+// Fetch data for Group 1 (Image URL)
+exports.getGroup1Image = async (req, res) => {
+    const supabase = getSupabase();
+
+    try {
+        const gameStarted = await checkGameStarted();
+        if (!gameStarted) {
+            return res.json({ waiting: true, message: 'Game has not started yet' });
+        }
+
+        const { data: gameState, error: gameStateError } = await supabase
+            .from('game_state')
+            .select('current_image_url, is_round_complete, game_over')
+            .order('current_round', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (gameStateError) throw gameStateError;
+
+        if (gameState.game_over) {
+            return res.json({ gameOver: true, message: 'Game is over' });
+        }
+
+        if (gameState.is_round_complete) {
+            return res.json({ waiting: true });
+        }
+
+        res.json({
+            image_url: gameState.current_image_url
+        });
+    } catch (err) {
+        handleError(res, err, 'Failed to fetch current image');
+    }
+};
+
+// Fetch data for Group 2 (Predictions and Calculations)
+exports.getGroup2Data = async (req, res) => {
+    const { userID } = req.session;
+    const supabase = getSupabase();
+
+    try {
+        const gameStarted = await checkGameStarted();
+        if (!gameStarted) {
+            return res.json({ waiting: true, message: 'Game has not started yet' });
+        }
+
+        const { data: gameState, error: gameStateError } = await supabase
+            .from('game_state')
+            .select('group1_predictions, group1_complete, is_round_complete, game_over')
+            .order('current_round', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (gameStateError) throw gameStateError;
+
+        if (gameState.game_over) {
+            return res.json({ gameOver: true, message: 'Game is over' });
+        }
+
+        if (!gameState.group1_complete || gameState.is_round_complete) {
+            return res.json({ waiting: true });
+        }
+
+        // Fetch user's connections from the connections table
+        const { data: userConnections, error: connectionsError } = await supabase
+            .from('connections')
+            .select('source_user_id, weight')
+            .eq('target_user_id', userID);
+
+        if (connectionsError) throw connectionsError;
+
+        let weightedSum = 0;
+        let totalWeight = 0;
+
+        for (const prediction of gameState.group1_predictions) {
+            const connection = userConnections.find(conn => conn.source_user_id === prediction.user_id);
+            if (connection) {
+                weightedSum += prediction.prediction * connection.weight;
+                totalWeight += connection.weight;
+            }
+        }
+
+        const weightedAverage = totalWeight > 0 ? weightedSum / totalWeight : 0;
+        const normalizedAverage = Math.max(-1, Math.min(1, weightedAverage));
+
+        res.json({
+            weightedAverage: normalizedAverage
+        });
+    } catch (err) {
+        console.error('Failed to fetch group 2 data:', err);
+        res.status(500).json({ error: 'Failed to fetch group 2 data' });
+    }
+};
+
+// Submitting Group Predictions
+exports.submitPrediction = async (req, res, groupNumber) => {
+    const { userID } = req.session;
+    const { prediction, round } = req.body;
+    const supabase = getSupabase();
+
+    try {
+        const { data: gameState } = await supabase
+            .from('game_state')
+            .select(`current_round, group${groupNumber}_predictions`)
+            .eq('current_round', round)
+            .single();
+
+        if (gameState.current_round !== round) {
+            return res.status(400).json({ error: 'Round mismatch' });
+        }
+
+        const updatedPredictions = [
+            ...gameState[`group${groupNumber}_predictions`],
+            { user_id: userID, prediction }
+        ];
+
+        const updateData = {};
+        updateData[`group${groupNumber}_predictions`] = updatedPredictions;
+        if (groupNumber === 1) {
+            updateData.group1_complete = true;
+        }
+
+        // Update the game state with the new predictions
+        await supabase
+            .from('game_state')
+            .update(updateData)
+            .eq('current_round', round);
+
+        // Mark that the user has given input
+        await supabase
+            .from('vk_demo_db')
+            .update({ has_given_input: true })
+            .eq('id', userID);
+
+        res.json({ message: 'Prediction submitted successfully' });
+    } catch (err) {
+        handleError(res, err, `Failed to submit Group ${groupNumber} prediction`);
+    }
+};
+
+exports.submitGroup1Prediction = (req, res) => exports.submitPrediction(req, res, 1);
+exports.submitGroup2Prediction = (req, res) => exports.submitPrediction(req, res, 2);
+
+// Fetch round results
+exports.getRoundResults = async (req, res) => {
+    const supabase = getSupabase();
+
+    try {
+        const { data: gameState } = await supabase
+            .from('game_state')
+            .select('*')
+            .order('current_round', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (!gameState.is_round_complete) {
+            return res.json({ isComplete: false });
+        }
+
+        const { data: currentImage } = await supabase
+            .from('images')
+            .select('correct_answer')
+            .eq('id', gameState.current_image_id)
+            .single();
+
+        res.json({
+            isComplete: true,
+            finalPrediction: gameState.final_prediction,
+            correctAnswer: currentImage.correct_answer,
+            isCorrect: gameState.final_prediction === currentImage.correct_answer
+        });
+    } catch (err) {
+        handleError(res, err, 'Failed to fetch round results');
+    }
+};
