@@ -2,8 +2,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const imageContainer = document.getElementById('image-container');
     const buttonContainer = document.getElementById('button-container');
     const spinnerContainer = document.getElementById('spinner-container');
+    const userIconContainer = document.getElementById('user-icon-container');
+
     let currentRound = 0;
     let currentImageUrl = null;
+    let userID = null;
 
     function checkForUpdates() {
         loadGroup1Data();
@@ -29,9 +32,33 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateGameImage(data.image_url);
                     console.log(`Updated current round to: ${currentRound}`);
                 }
+
+                if (data.userID && data.userID !== userID) {
+                    userID = data.userID;
+                    fetchUserIcon(userID);
+                }
             })
             .catch(handleError);
     }
+
+    function fetchUserIcon(userID) {
+        fetch(`/api/users/icon/${userID}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.icon) {
+                    updateUserIcon(data.icon);
+                } else {
+                    console.error('Icon not found for user');
+                }
+            })
+            .catch(error => console.error('Error fetching user icon:', error));
+    }
+
+    function updateUserIcon(iconUnicode) {
+        userIconContainer.textContent = String.fromCodePoint(parseInt(iconUnicode, 16));
+        userIconContainer.classList.remove('hidden');
+    }
+
 
     function getCurrentRound() {
         return fetch('/api/group1/get_image')

@@ -98,6 +98,7 @@ button:disabled {
     background-color: rgba(0, 0, 0, 0.7);
     z-index: 1000;
     flex-direction: column;
+    transition: opacity 0.3s ease;
 }
 
 .spinner {
@@ -123,36 +124,44 @@ button:disabled {
     100% { transform: rotate(360deg); }
 }
 
-#prediction-display {
-    width: 100px;
-    height: 100px;
-    border-radius: 50%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 24px;
-    font-weight: bold;
-    color: white;
-    margin: 20px auto;
-    transition: background-color 0.3s ease;
+/* Add these styles to your existing CSS file */
+
+#prediction-bar {
+    width: 100%;
+    height: 30px;
+    background: linear-gradient(to right, #4dff4d var(--phytoplankton-percentage, 50%), #ff4d4d var(--phytoplankton-percentage, 50%));
+    border-radius: 15px;
+    margin-bottom: 10px;
+    transition: all 0.3s ease;
 }
 
-#round-display {
+#prediction-text {
     text-align: center;
-    font-size: 1.4em;
+    font-size: 18px;
     font-weight: bold;
-    margin-bottom: 1.5rem;
-    color: #3498db;
+    color: #2c3e50;
+    margin-bottom: 20px;
+    transition: opacity 0.3s ease;
 }
 
-#round-results {
-    background-color: #e8f5e9;
-    border: 1px solid #81c784;
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin-top: 1.5rem;
-    text-align: center;
+.spinner-container {
+
 }
+
+.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+#prediction-container {
+    transition: opacity 0.3s ease;
+}
+
+button {
+    transition: background-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Existing styles remain unchanged */
 
 .highlight {
     font-weight: bold;
@@ -165,6 +174,19 @@ button:disabled {
 
 .fade-in {
     animation: fadeIn 0.5s ease-in;
+}
+
+/* Add these styles to your existing CSS file */
+
+#user-icon-container {
+    font-size: 36px;
+    text-align: center;
+    margin-bottom: 20px;
+    transition: opacity 0.3s ease;
+}
+
+#user-icon {
+    color: #3498db; /* You can change this color as needed */
 }
 
 @keyframes fadeIn {

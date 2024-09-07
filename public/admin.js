@@ -298,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
         checkFinalNodeBot();
         fetchUsersInfo();
         updateGameStats();
-    }, 10000);
+    }, 3000);
     // Function to handle image uploads
     function handleImageUpload(event) {
         event.preventDefault();

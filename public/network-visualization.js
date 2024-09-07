@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    const POLL_INTERVAL = 1000; // Poll every 1 second
+    const POLL_INTERVAL = 5000; // Poll every 5 second
     let svg = createSVG();
 
     let previousData = { nodes: [], links: [] }; // Store previous state

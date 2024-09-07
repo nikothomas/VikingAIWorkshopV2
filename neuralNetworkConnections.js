@@ -1,6 +1,6 @@
 const { getSupabase } = require('./db/supabase');
 
-const CONNECTION_UPDATE_INTERVAL = 10000; // Update every 10 seconds
+const CONNECTION_UPDATE_INTERVAL = 11000; // Update every 10 seconds
 const CONNECTIONS_PER_GROUP1 = 2; // Exactly 2 connections per Group 1 node
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
@@ -66,18 +66,20 @@ function checkConditions(connections, group1Players, group2Players, finalNode) {
         connections.filter(conn => conn.source_user_id === g1Player.id).length === CONNECTIONS_PER_GROUP1
     );
 
-    // Check if all Group 2 players have equally distributed inbound connections
+    // Check if all Group 2 players have approximately equally distributed inbound connections
     const group2InboundCounts = group2Players.map(g2Player =>
         connections.filter(conn => conn.target_user_id === g2Player.id).length
     );
-    const equalInboundConnections = new Set(group2InboundCounts).size === 1;
+    const minInbound = Math.min(...group2InboundCounts);
+    const maxInbound = Math.max(...group2InboundCounts);
+    const flexibleInboundConnections = maxInbound - minInbound <= 1;
 
     // Check if all Group 2 players are connected to the final node
     const allGroup2ConnectedToFinal = group2Players.every(g2Player =>
         connections.some(conn => conn.source_user_id === g2Player.id && conn.target_user_id === finalNode.id)
     );
 
-    return allConnectionsValid && allGroup1HaveCorrectConnections && equalInboundConnections && allGroup2ConnectedToFinal;
+    return allConnectionsValid && allGroup1HaveCorrectConnections && flexibleInboundConnections && allGroup2ConnectedToFinal;
 }
 
 function createAllConnections(group1Players, group2Players, finalNode) {

@@ -41,26 +41,29 @@ exports.getNetworkData = async (req, res) => {
             .eq('is_round_complete', true)
             .order('current_round', { ascending: false })
             .limit(10);
-
+        let accuracy;
         if (recentRoundsError) throw recentRoundsError;
+        if (!recentRounds.length > 1) {
+            // Calculate accuracy
+            const correctPredictions = await Promise.all(recentRounds.map(async (round) => {
+                const {data: image, error: imageError} = await supabase
+                    .from('images')
+                    .select('correct_answer')
+                    .eq('id', round.current_image_id)
+                    .single();
 
-        // Calculate accuracy
-        const correctPredictions = await Promise.all(recentRounds.map(async (round) => {
-            const { data: image, error: imageError } = await supabase
-                .from('images')
-                .select('correct_answer')
-                .eq('id', round.current_image_id)
-                .single();
+                if (imageError) {
+                    console.error(`Error fetching image data for round ${round.current_round}:`, imageError);
+                    return false;
+                }
 
-            if (imageError) {
-                console.error(`Error fetching image data for round ${round.current_round}:`, imageError);
-                return false;
-            }
-
-            return round.final_prediction === image.correct_answer;
-        }));
-
-        const accuracy = correctPredictions.filter(Boolean).length / correctPredictions.length;
+                return round.final_prediction === image.correct_answer;
+            }));
+            accuracy = correctPredictions.filter(Boolean).length / correctPredictions.length;
+        }
+        else{
+            accuracy = 0.0
+        }
 
         // Format nodes for D3.js
         const nodes = usersData.map(user => ({

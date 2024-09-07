@@ -1,14 +1,18 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const predictionDisplay = document.getElementById('prediction-display');
-    const weightDisplay = document.getElementById('weight');
+    const predictionBar = document.getElementById('prediction-bar');
+    const predictionText = document.getElementById('prediction-text');
     const predictPhytoplanktonBtn = document.getElementById('predict-phytoplankton-btn');
     const predictNonPhytoplanktonBtn = document.getElementById('predict-non-phytoplankton-btn');
     const spinnerContainer = document.getElementById('spinner-container');
     const predictionContainer = document.getElementById('prediction-container');
+    const userIconContainer = document.getElementById('user-icon-container');
+    const userIcon = document.getElementById('user-icon');
+
     let currentRound = 0;
     let hasPredicted = false;
     let lastWeightedAverage = null;
-    let lastWeight = null;
+    let userID = null;
+    let currentState = 'loading'; // Possible states: 'loading', 'waiting', 'predicting', 'gameover'
 
     function checkForUpdates() {
         loadGroup2Data();
@@ -18,59 +22,125 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch('/api/group2/get_data')
             .then(response => response.json())
             .then(data => {
-                if (data.gameOver) {  // Check if the game is over
+                if (data.gameOver && currentState !== 'gameover') {
                     showGameOver();
-                    clearInterval(updateInterval);  // Stop further checks once game is over
-                    return; // Exit the function early to avoid any further processing
+                    clearInterval(updateInterval);
+                    return;
                 }
 
+                let newState = currentState;
                 if (data.waiting) {
                     if (data.message === 'Game has not started yet') {
-                        showWaiting('Waiting for game to start...');
+                        newState = 'waiting';
+                        updateSpinnerMessage('Waiting for game to start...');
                     } else if (hasPredicted) {
-                        showWaiting('Waiting for next round...');
+                        newState = 'waiting';
+                        updateSpinnerMessage('Waiting for next round...');
                     } else {
-                        showWaiting('Waiting for Group 1 predictions...');
+                        newState = 'waiting';
+                        updateSpinnerMessage('Waiting for Group 1 predictions...');
                     }
                 } else if (data.round !== currentRound || !hasPredicted) {
                     currentRound = data.round;
                     updatePredictionData(data);
-                    showPredictionOptions();
+                    newState = 'predicting';
                     hasPredicted = false;
+                }
+
+                if (newState !== currentState) {
+                    updateUIState(newState);
+                }
+
+                if (data.userID && data.userID !== userID) {
+                    userID = data.userID;
+                    fetchUserIcon(userID);
                 }
             })
             .catch(handleError);
     }
 
-    function showGameOver() {
-        setLoading(false);
-        predictionContainer.classList.add('hidden');
+    function updateUIState(newState) {
+        currentState = newState;
+        switch (newState) {
+            case 'loading':
+            case 'waiting':
+                showSpinner();
+                hidePredictionOptions();
+                break;
+            case 'predicting':
+                hideSpinner();
+                showPredictionOptions();
+                break;
+            case 'gameover':
+                hideSpinner();
+                hidePredictionOptions();
+                showGameOver();
+                break;
+        }
+    }
 
+    function updateSpinnerMessage(message) {
+        const spinnerMessage = spinnerContainer.querySelector('p');
+        if (spinnerMessage.textContent !== message) {
+            spinnerMessage.textContent = message;
+        }
+    }
+
+    function fetchUserIcon(userID) {
+        fetch(`/api/icon/${userID}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.icon) {
+                    updateUserIcon(data.icon);
+                } else {
+                    console.error('Icon not found for user');
+                    updateUserIcon('fa-user'); // Default FontAwesome icon
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching user icon:', error);
+                updateUserIcon('fa-user'); // Default FontAwesome icon
+            });
+    }
+
+    function updateUserIcon(iconClass) {
+        // Remove all existing classes except 'fas'
+        userIcon.className = 'fas';
+
+        // Add the new icon class
+        userIcon.classList.add(iconClass);
+
+        // Show the icon container
+        userIconContainer.classList.remove('hidden');
+    }
+
+    function showGameOver() {
+        updateUIState('gameover');
         const gameOverDiv = document.createElement('div');
         gameOverDiv.id = 'game-over';
         gameOverDiv.innerHTML = '<h2>Game Over</h2><p>Thank you for participating!</p>';
         document.querySelector('.container').appendChild(gameOverDiv);
-
-        // Ensure the interval is cleared when the game is over
-        clearInterval(updateInterval); // Stop further checks once game is over
     }
 
-    function setLoading(isLoading, message = 'Loading...') {
-        spinnerContainer.classList.toggle('hidden', !isLoading);
-        spinnerContainer.querySelector('p').textContent = message;
+    function showSpinner() {
+        spinnerContainer.classList.remove('hidden');
     }
 
-    function showWaiting(message) {
-        setLoading(true, message);
-        predictionContainer.classList.add('hidden');
+    function hideSpinner() {
+        spinnerContainer.classList.add('hidden');
     }
 
     function showPredictionOptions() {
-        setLoading(false);
         predictionContainer.classList.remove('hidden');
     }
 
+    function hidePredictionOptions() {
+        predictionContainer.classList.add('hidden');
+    }
+
     function submitPrediction(prediction) {
+        updateUIState('waiting');
+        updateSpinnerMessage('Submitting prediction...');
         fetch('/api/group2/submit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -81,48 +151,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log(data.message);
                 hasPredicted = true;
                 disablePredictionButtons();
-                showWaiting('Waiting for next round...');
+                updateSpinnerMessage('Waiting for next round...');
             })
             .catch(handleError);
     }
 
     function updatePredictionData(data) {
         const newWeightedAverage = data.weightedAverage;
-        const newWeight = data.userWeight.toFixed(2);
 
         if (newWeightedAverage !== lastWeightedAverage) {
             updatePredictionDisplay(newWeightedAverage);
             lastWeightedAverage = newWeightedAverage;
         }
 
-        if (newWeight !== lastWeight) {
-            weightDisplay.textContent = newWeight;
-            weightDisplay.classList.add('fade-in');
-            setTimeout(() => weightDisplay.classList.remove('fade-in'), 500);
-            lastWeight = newWeight;
-        }
-
         enablePredictionButtons();
     }
 
     function updatePredictionDisplay(value) {
-        // Convert -1 to 1 scale to 0 to 1 scale
-        const normalizedValue = (value + 1) / 2;
+        console.log('Original value:', value);
 
-        // Calculate color (red to green)
-        const red = Math.round(255 * (1 - normalizedValue));
-        const green = Math.round(255 * normalizedValue);
-        const color = `rgb(${red}, ${green}, 0)`;
+        // Clamp the value to be between -1 and 1
+        const clampedValue = Math.max(-1, Math.min(1, value));
+        console.log('Clamped value:', clampedValue);
 
-        // Update display
-        predictionDisplay.style.backgroundColor = color;
-        predictionDisplay.textContent = value.toFixed(2);
-        predictionDisplay.classList.add('fade-in');
-        setTimeout(() => predictionDisplay.classList.remove('fade-in'), 500);
+        // Calculate the percentage for phytoplankton (green)
+        const phytoplanktonPercentage = ((clampedValue + 1) / 2) * 100;
+
+        // Update the prediction bar
+        predictionBar.style.setProperty('--phytoplankton-percentage', `${phytoplanktonPercentage}%`);
+
+        // Update the likelihood text based on the clamped value
+        const likelihood = clampedValue > 0 ? "Likely" : "Not Likely";
+        const percentage = Math.abs(clampedValue * 100).toFixed(1);
+        const newText = `${likelihood} to be phytoplankton (${percentage}%)`;
+
+        if (predictionText.textContent !== newText) {
+            predictionText.textContent = newText;
+        }
     }
 
     function handleError(error) {
         console.error('Error:', error);
+        updateUIState('predicting');
         alert('An error occurred. Please try again.');
     }
 
@@ -139,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
     predictPhytoplanktonBtn.addEventListener('click', () => submitPrediction(1));
     predictNonPhytoplanktonBtn.addEventListener('click', () => submitPrediction(-1));
 
-    // Start the update cycle
+    updateUIState('loading');
     checkForUpdates();
-    const updateInterval = setInterval(checkForUpdates, 1000);  // Keep track of interval ID
+    const updateInterval = setInterval(checkForUpdates, 1000);
 });

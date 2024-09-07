@@ -15,6 +15,8 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.post('/join-game', userController.joinGame);
 router.get('/check-group', userController.checkGroup);
 router.get('/check-game-status', gameController.checkGameStatus);
+// New route for fetching user icon
+router.get('/icon/:userID', userController.getUserIcon);
 
 // Game routes
 router.get('/group1/get_image', gameController.getGroup1Image);

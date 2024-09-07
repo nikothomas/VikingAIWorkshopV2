@@ -67,3 +67,39 @@ exports.checkGroup = async (req, res) => {
         res.status(500).json({ error: 'Failed to check group assignment' });
     }
 };
+
+exports.getUserIcon = async (req, res) => {
+    const { userID } = req.params; // Get userID from route parameters
+
+    // Validate that userID exists
+    if (!userID) {
+        return res.status(400).json({ error: 'User ID is required.' });
+    }
+
+    const supabase = getSupabase();
+
+    try {
+        const { data: user, error } = await supabase
+            .from('vk_demo_db')
+            .select('icon')
+            .eq('id', userID)
+            .single();
+
+        if (error) {
+            if (error.code === 'PGRST116') {
+                // No user found
+                return res.status(404).json({ error: 'User not found.' });
+            }
+            throw error;
+        }
+
+        if (user && user.icon) {
+            res.json({ icon: user.icon });
+        } else {
+            res.status(404).json({ error: 'Icon not found for this user.' });
+        }
+    } catch (err) {
+        console.error('Error fetching user icon:', err);
+        res.status(500).json({ error: 'Failed to fetch user icon' });
+    }
+};

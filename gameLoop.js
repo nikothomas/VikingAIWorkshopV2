@@ -2,8 +2,11 @@ const { getSupabase } = require('./db/supabase');
 
 let gameInterval;
 let checkGameStartInterval;
-const GAME_TICK_INTERVAL = 5000; // 5 seconds
-const GAME_START_CHECK_INTERVAL = 10000; // 10 seconds
+const GAME_TICK_INTERVAL = 15000; // 15 seconds
+const GAME_START_CHECK_INTERVAL = 9000; // 9 seconds
+const { createCanvas } = require('canvas');
+const fs = require('fs');
+const path = require('path');
 
 async function gameLoop() {
     const supabase = getSupabase();
@@ -57,8 +60,10 @@ async function gameLoop() {
 
         if (group2Error) throw group2Error;
 
+        // After making the final node bot prediction, calculate and store the accuracy
         if (gameState.group2_predictions.length === group2Users.length && !gameState.is_round_complete) {
             await makeFinalNodeBotPrediction(gameState.current_round);
+            await storeRoundAccuracy(gameState.current_round);
         }
 
     } catch (error) {
@@ -133,79 +138,145 @@ async function backpropagateWeightsForRound(round) {
     const supabase = getSupabase();
 
     try {
-        const { data: gameState } = await supabase
+        console.log(`Starting weight updates for round ${round}`);
+
+        // Fetch game state
+        const { data: gameState, error: gameStateError } = await supabase
             .from('game_state')
             .select('group1_predictions, group2_predictions, current_image_id, final_prediction, is_round_complete, is_weights_updated')
             .eq('current_round', round)
             .single();
+
+        if (gameStateError) {
+            throw new Error(`Failed to fetch game state: ${gameStateError.message}`);
+        }
 
         if (!gameState.is_round_complete || gameState.is_weights_updated) {
             console.log(`Weights already updated or round not complete for round ${round}.`);
             return;
         }
 
-        const { data: correctAnswer } = await supabase
+        // Fetch correct answer
+        const { data: correctAnswer, error: correctAnswerError } = await supabase
             .from('images')
             .select('correct_answer')
             .eq('id', gameState.current_image_id)
             .single();
 
-        const { data: connections } = await supabase
+        if (correctAnswerError) {
+            throw new Error(`Failed to fetch correct answer: ${correctAnswerError.message}`);
+        }
+
+        console.log(`Correct answer for round ${round}: ${correctAnswer.correct_answer}`);
+        console.log(`Final prediction for round ${round}: ${gameState.final_prediction}`);
+
+        // Fetch connections
+        const { data: connections, error: connectionsError } = await supabase
             .from('connections')
             .select('*');
 
-        const finalNodeId = (await supabase.from('vk_demo_db').select('id').eq('group_number', -2).single()).data.id;
+        if (connectionsError) {
+            throw new Error(`Failed to fetch connections: ${connectionsError.message}`);
+        }
 
-        const learningRate = 0.1;
-        const target = correctAnswer.correct_answer === gameState.final_prediction ? 1 : -1;
+        console.log(`Fetched ${connections.length} connections`);
 
-        // Calculate error for the final output
-        const outputError = target - (gameState.final_prediction === correctAnswer.correct_answer ? 1 : -1);
+        // Fetch final node ID
+        const { data: finalNode, error: finalNodeError } = await supabase
+            .from('vk_demo_db')
+            .select('id')
+            .eq('group_number', -2)
+            .single();
+
+        if (finalNodeError) {
+            throw new Error(`Failed to fetch final node: ${finalNodeError.message}`);
+        }
+
+        const finalNodeId = finalNode.id;
+        console.log(`Final node ID: ${finalNodeId}`);
+
+        const learningRate = 0.05;
+
+        // Correct error calculation
+        const outputError = correctAnswer.correct_answer - gameState.final_prediction;
+        console.log(`Output error: ${outputError} (Correct Answer: ${correctAnswer.correct_answer}, Final Prediction: ${gameState.final_prediction})`);
 
         // Update weights for connections between Group 2 and Final Node
+        console.log('Updating weights for Group 2 to Final Node connections:');
         for (const prediction of gameState.group2_predictions) {
             const connection = connections.find(c => c.source_user_id === prediction.user_id && c.target_user_id === finalNodeId);
             if (connection) {
                 const weightUpdate = learningRate * outputError * prediction.prediction;
-                await supabase
-                    .from('connections')
-                    .update({ weight: connection.weight + weightUpdate })
-                    .eq('id', connection.id);
+                const oldWeight = connection.weight;
+                const newWeight = oldWeight + weightUpdate;
+
+                try {
+                    const { error: updateError } = await supabase
+                        .from('connections')
+                        .update({ weight: newWeight })
+                        .eq('id', connection.id);
+
+                    if (updateError) {
+                        throw new Error(`Failed to update Group 2 to Final Node connection: ${updateError.message}`);
+                    }
+                } catch (error) {
+                    console.error(`    Error updating Group 2 to Final Node connection for user ${prediction.user_id}:`, error);
+                }
             }
         }
 
         // Calculate errors for Group 2 nodes
         const group2Errors = {};
+        console.log('Calculating errors for Group 2 nodes:');
         for (const g2Prediction of gameState.group2_predictions) {
             const connection = connections.find(c => c.source_user_id === g2Prediction.user_id && c.target_user_id === finalNodeId);
             if (connection) {
                 group2Errors[g2Prediction.user_id] = outputError * connection.weight;
+
             }
         }
 
         // Update weights for connections between Group 1 and Group 2
+        console.log('Updating weights for Group 1 to Group 2 connections:');
         for (const g1Prediction of gameState.group1_predictions) {
             for (const g2Prediction of gameState.group2_predictions) {
                 const connection = connections.find(c => c.source_user_id === g1Prediction.user_id && c.target_user_id === g2Prediction.user_id);
                 if (connection) {
                     const g2Error = group2Errors[g2Prediction.user_id];
                     const weightUpdate = learningRate * g2Error * g1Prediction.prediction;
-                    await supabase
-                        .from('connections')
-                        .update({ weight: connection.weight + weightUpdate })
-                        .eq('id', connection.id);
+                    const oldWeight = connection.weight;
+                    const newWeight = oldWeight + weightUpdate;
+
+                    try {
+                        const { error: updateError } = await supabase
+                            .from('connections')
+                            .update({ weight: newWeight })
+                            .eq('id', connection.id);
+
+                        if (updateError) {
+                            throw new Error(`Failed to update Group 1 to Group 2 connection: ${updateError.message}`);
+                        }
+                    } catch (error) {
+                        console.error(`    Error updating Group 1 to Group 2 connection for users ${g1Prediction.user_id} to ${g2Prediction.user_id}:`, error);
+                    }
                 }
             }
         }
 
-        await supabase
+        // Mark weights as updated
+        const { error: finalUpdateError } = await supabase
             .from('game_state')
             .update({ is_weights_updated: true })
             .eq('current_round', round);
 
+        if (finalUpdateError) {
+            throw new Error(`Failed to mark weights as updated: ${finalUpdateError.message}`);
+        }
+
         console.log(`Weights updated successfully for round ${round}.`);
     } catch (error) {
-        console.error('Error updating weights for round:', error);
+        console.error(`Error in backpropagateWeightsForRound for round ${round}:`, error);
+        // You might want to add additional error handling here, such as notifying an admin or retrying the operation
     }
 }
 
@@ -393,6 +464,98 @@ function stopCheckGameStartInterval() {
     }
 }
 
+async function storeRoundAccuracy(round) {
+    const supabase = getSupabase();
+
+    try {
+        const { data: gameState } = await supabase
+            .from('game_state')
+            .select('final_prediction, current_image_id')
+            .eq('current_round', round)
+            .single();
+
+        const { data: image } = await supabase
+            .from('images')
+            .select('correct_answer')
+            .eq('id', gameState.current_image_id)
+            .single();
+
+        const accuracy = gameState.final_prediction === image.correct_answer ? 1 : 0;
+
+        await supabase
+            .from('round_accuracies')
+            .insert({ round, accuracy });
+
+    } catch (error) {
+        console.error('Error storing round accuracy:', error);
+    }
+}
+
+async function generateAccuracyPlot() {
+    const supabase = getSupabase();
+
+    try {
+        const { data: accuracies } = await supabase
+            .from('round_accuracies')
+            .select('round, accuracy')
+            .order('round', { ascending: true });
+
+        const width = 800;
+        const height = 400;
+        const canvas = createCanvas(width, height);
+        const ctx = canvas.getContext('2d');
+
+        // Set background
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, width, height);
+
+        // Draw axes
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(50, 350);
+        ctx.lineTo(750, 350);
+        ctx.moveTo(50, 350);
+        ctx.lineTo(50, 50);
+        ctx.stroke();
+
+        // Plot accuracy points
+        ctx.strokeStyle = 'blue';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        accuracies.forEach((point, index) => {
+            const x = 50 + (index / (accuracies.length - 1)) * 700;
+            const y = 350 - point.accuracy * 300;
+            if (index === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+        ctx.stroke();
+
+        // Add labels
+        ctx.fillStyle = 'black';
+        ctx.font = '16px Arial';
+        ctx.fillText('Round', 375, 390);
+        ctx.save();
+        ctx.translate(20, 200);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('Accuracy', 0, 0);
+        ctx.restore();
+
+        // Save the plot
+        const buffer = canvas.toBuffer('image/png');
+        const plotPath = path.join(__dirname, 'public', 'accuracy_plot.png');
+        fs.writeFileSync(plotPath, buffer);
+
+        console.log('Accuracy plot generated and saved');
+        return plotPath;
+    } catch (error) {
+        console.error('Error generating accuracy plot:', error);
+    }
+}
+
 async function endGame() {
     const supabase = getSupabase();
 
@@ -415,6 +578,11 @@ async function endGame() {
 
         stopGameLoop();
         console.log('Game ended.');
+
+        // Generate and save the accuracy plot
+        const plotPath = await generateAccuracyPlot();
+        console.log(`Accuracy plot saved at: ${plotPath}`);
+
     } catch (error) {
         console.error('Error ending game:', error);
         throw error;

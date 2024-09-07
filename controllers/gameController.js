@@ -196,7 +196,6 @@ exports.getGroup1Image = async (req, res) => {
     }
 };
 
-// Fetch data for Group 2 (Predictions and Calculations)
 exports.getGroup2Data = async (req, res) => {
     const { userID } = req.session;
     const supabase = getSupabase();
@@ -209,7 +208,7 @@ exports.getGroup2Data = async (req, res) => {
 
         const { data: gameState, error: gameStateError } = await supabase
             .from('game_state')
-            .select('group1_predictions, group1_complete, is_round_complete, game_over')
+            .select('group1_predictions, group1_complete, is_round_complete, game_over, current_round')
             .order('current_round', { ascending: false })
             .limit(1)
             .single();
@@ -224,8 +223,8 @@ exports.getGroup2Data = async (req, res) => {
             return res.json({ waiting: true });
         }
 
-        // Fetch user's connections from the connections table
-        const { data: userConnections, error: connectionsError } = await supabase
+        // Fetch connections for the current user
+        const { data: connections, error: connectionsError } = await supabase
             .from('connections')
             .select('source_user_id, weight')
             .eq('target_user_id', userID);
@@ -236,7 +235,7 @@ exports.getGroup2Data = async (req, res) => {
         let totalWeight = 0;
 
         for (const prediction of gameState.group1_predictions) {
-            const connection = userConnections.find(conn => conn.source_user_id === prediction.user_id);
+            const connection = connections.find(conn => conn.source_user_id === prediction.user_id);
             if (connection) {
                 weightedSum += prediction.prediction * connection.weight;
                 totalWeight += connection.weight;
@@ -247,7 +246,9 @@ exports.getGroup2Data = async (req, res) => {
         const normalizedAverage = Math.max(-1, Math.min(1, weightedAverage));
 
         res.json({
-            weightedAverage: normalizedAverage
+            round: gameState.current_round,
+            weightedAverage: normalizedAverage,
+            userID: userID
         });
     } catch (err) {
         console.error('Failed to fetch group 2 data:', err);
