@@ -39,6 +39,7 @@ router.post('/admin/create-final-node-bot', adminController.createFinalNodeBot);
 router.get('/admin/check-final-node-bot', adminController.checkFinalNodeBot);
 router.post('/admin/reset-game', adminController.resetGame);
 router.post('/admin/start-game', adminController.startGame);
+router.post('/admin/assign-subgroups', adminController.assignSubgroups);
 
 // D3 Visualization route
 router.get('/get-network-data', d3Controller.getNetworkData);

@@ -139,9 +139,14 @@ exports.assignGroup = async (req, res) => {
             .update({ group_number: groupNumber })
             .eq('id', userID);
 
+        if (groupNumber === 1) {
+            await gameController.assignSubgroups();
+        }
+
         res.json({ message: `User assigned to group ${groupNumber}` });
     } catch (error) {
-        handleErrors(res, error, 'Failed to assign user to group');
+        console.error('Failed to assign user to group:', error);
+        res.status(500).json({ error: 'Failed to assign user to group' });
     }
 };
 
@@ -184,6 +189,14 @@ exports.deleteUser = async (req, res) => {
     const supabase = getSupabase();
 
     try {
+        const { data: user, error: fetchError } = await supabase
+            .from('vk_demo_db')
+            .select('group_number')
+            .eq('id', userID)
+            .single();
+
+        if (fetchError) throw fetchError;
+
         await supabase.from('vk_demo_db').delete().eq('id', userID);
 
         // Delete connections related to this user
@@ -192,11 +205,29 @@ exports.deleteUser = async (req, res) => {
             .delete()
             .or(`source_user_id.eq.${userID},target_user_id.eq.${userID}`);
 
+        if (user.group_number === 1) {
+            await gameController.assignSubgroups();
+        }
+
         res.json({ message: 'User and related connections deleted successfully.' });
     } catch (error) {
-        handleErrors(res, error, 'Failed to delete user');
+        console.error('Failed to delete user:', error);
+        res.status(500).json({ error: 'Failed to delete user' });
     }
 };
+
+// Add this new function to handle the /admin/assign-subgroups route
+exports.assignSubgroups = async (req, res) => {
+    try {
+        await gameController.assignSubgroups();
+        res.json({ message: 'Subgroups assigned successfully' });
+    } catch (error) {
+        console.error('Failed to assign subgroups:', error);
+        res.status(500).json({ error: 'Failed to assign subgroups' });
+    }
+};
+
+
 
 exports.getGameState = async (req, res) => {
     const supabase = getSupabase();

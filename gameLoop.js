@@ -519,6 +519,13 @@ async function generateAccuracyPlot() {
         ctx.lineTo(50, 50);
         ctx.stroke();
 
+        // Calculate moving average
+        const movingAverage = accuracies.map((point, index, array) => {
+            if (index < 2) return null;
+            const sum = array.slice(index - 2, index + 1).reduce((acc, curr) => acc + curr.accuracy, 0);
+            return { round: point.round, average: sum / 3 };
+        }).filter(point => point !== null);
+
         // Plot accuracy points
         ctx.strokeStyle = 'blue';
         ctx.lineWidth = 2;
@@ -526,6 +533,21 @@ async function generateAccuracyPlot() {
         accuracies.forEach((point, index) => {
             const x = 50 + (index / (accuracies.length - 1)) * 700;
             const y = 350 - point.accuracy * 300;
+            if (index === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        });
+        ctx.stroke();
+
+        // Plot moving average
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        movingAverage.forEach((point, index) => {
+            const x = 50 + ((index + 2) / (accuracies.length - 1)) * 700;
+            const y = 350 - point.average * 300;
             if (index === 0) {
                 ctx.moveTo(x, y);
             } else {
@@ -543,6 +565,52 @@ async function generateAccuracyPlot() {
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('Accuracy', 0, 0);
         ctx.restore();
+
+        // Add legend
+        ctx.font = '14px Arial';
+        ctx.fillStyle = 'blue';
+        ctx.fillRect(600, 50, 20, 10);
+        ctx.fillStyle = 'black';
+        ctx.fillText('Accuracy', 625, 60);
+        ctx.fillStyle = 'red';
+        ctx.fillRect(600, 70, 20, 10);
+        ctx.fillStyle = 'black';
+        ctx.fillText('3-Round Moving Average', 625, 80);
+
+        // Add tick marks and labels for y-axis
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 1;
+        ctx.textAlign = 'right';
+        for (let i = 0; i <= 10; i++) {
+            const y = 350 - i * 30;
+            ctx.beginPath();
+            ctx.moveTo(45, y);
+            ctx.lineTo(55, y);
+            ctx.stroke();
+            ctx.fillText((i / 10).toFixed(2), 40, y + 5);
+        }
+
+        // Add tick marks and labels for x-axis
+        ctx.textAlign = 'center';
+        const tickInterval = Math.ceil(accuracies.length / 10);
+        for (let i = 0; i < accuracies.length; i += tickInterval) {
+            const x = 50 + (i / (accuracies.length - 1)) * 700;
+            ctx.beginPath();
+            ctx.moveTo(x, 350);
+            ctx.lineTo(x, 355);
+            ctx.stroke();
+            ctx.fillText(accuracies[i].round.toString(), x, 370);
+        }
+
+        // Add ticks for the last round of each moving average window
+        ctx.strokeStyle = 'red';
+        movingAverage.forEach((point, index) => {
+            const x = 50 + ((index + 2) / (accuracies.length - 1)) * 700;
+            ctx.beginPath();
+            ctx.moveTo(x, 350);
+            ctx.lineTo(x, 360);
+            ctx.stroke();
+        });
 
         // Save the plot
         const buffer = canvas.toBuffer('image/png');

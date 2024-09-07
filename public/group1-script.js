@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (data.round !== currentRound || data.image_url !== currentImageUrl) {
                     currentRound = data.round;
                     currentImageUrl = data.image_url;
-                    updateGameImage(data.image_url);
+                    updateGameImage(data.image_url, data.crossection);
                     console.log(`Updated current round to: ${currentRound}`);
                 }
 
@@ -39,6 +39,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             })
             .catch(handleError);
+    }
+
+    function updateGameImage(imageUrl, crossection) {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            const imgWidth = this.naturalWidth;
+            const imgHeight = this.naturalHeight;
+
+            const startX = Math.floor(imgWidth * crossection.start / 100);
+            const width = Math.ceil(imgWidth * crossection.width / 100);
+
+            canvas.width = width;
+            canvas.height = imgHeight;
+
+            ctx.drawImage(this, startX, 0, width, imgHeight, 0, 0, width, imgHeight);
+
+            imageContainer.innerHTML = '';
+            imageContainer.appendChild(canvas);
+        };
+        img.src = imageUrl;
+        showImage();
     }
 
     function fetchUserIcon(userID) {
@@ -115,10 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('.container').appendChild(gameOverDiv);
     }
 
-    function updateGameImage(imageUrl) {
-        imageContainer.innerHTML = `<img id="game-image" src="${imageUrl}" alt="Phytoplankton Image" class="fade-in">`;
-        showImage();
-    }
+
 
     function showWaiting(message) {
         setLoading(true, message);

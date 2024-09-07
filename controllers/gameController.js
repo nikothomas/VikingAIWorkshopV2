@@ -6,6 +6,42 @@ const handleError = (res, error, message) => {
     res.status(500).json({ error: message });
 };
 
+// At the top of the file, add this line:
+exports.assignSubgroups = async () => {
+    const supabase = getSupabase();
+
+    try {
+        // Fetch all Group 1 users
+        const { data: group1Users, error: fetchError } = await supabase
+            .from('vk_demo_db')
+            .select('id')
+            .eq('group_number', 1);
+
+        if (fetchError) throw fetchError;
+
+        // Shuffle the users to randomize subgroup assignment
+        const shuffledUsers = group1Users.sort(() => 0.5 - Math.random());
+
+        // Assign subgroups
+        const updates = shuffledUsers.map((user, index) => ({
+            id: user.id,
+            group_one_subgroup: index
+        }));
+
+        // Update the database
+        const { error: updateError } = await supabase
+            .from('vk_demo_db')
+            .upsert(updates);
+
+        if (updateError) throw updateError;
+
+        console.log(`Assigned subgroups to ${updates.length} Group 1 users`);
+    } catch (error) {
+        console.error('Error assigning subgroups:', error);
+        throw error; // Rethrow the error so it can be caught by the caller
+    }
+};
+
 async function checkGameStarted() {
     const supabase = getSupabase();
     try {
@@ -188,13 +224,39 @@ exports.getGroup1Image = async (req, res) => {
             return res.json({ waiting: true });
         }
 
+        // Fetch user's subgroup
+        const { data: userData, error: userError } = await supabase
+            .from('vk_demo_db')
+            .select('group_one_subgroup')
+            .eq('id', userID)
+            .single();
+
+        if (userError) throw userError;
+
+        // Fetch total number of Group 1 users
+        const { count: totalUsers, error: countError } = await supabase
+            .from('vk_demo_db')
+            .select('id', { count: 'exact' })
+            .eq('group_number', 1);
+
+        if (countError) throw countError;
+
+        // Calculate the crossection
+        const crossectionWidth = Math.ceil(1 / totalUsers * 100);
+        const startPercentage = userData.group_one_subgroup * crossectionWidth;
+
         res.json({
             round: gameState.current_round,
             image_url: gameState.current_image_url,
-            userID: userID
+            userID: userID,
+            crossection: {
+                start: startPercentage,
+                width: crossectionWidth
+            }
         });
     } catch (err) {
-        handleError(res, err, 'Failed to fetch current image');
+        console.error('Failed to fetch current image:', err);
+        res.status(500).json({ error: 'Failed to fetch current image' });
     }
 };
 
