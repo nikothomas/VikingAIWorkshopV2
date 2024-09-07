@@ -42,8 +42,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function fetchUserIcon(userID) {
-        fetch(`/api/users/icon/${userID}`)
-            .then(response => response.json())
+        fetch(`/api/icon/${userID}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.icon) {
                     updateUserIcon(data.icon);
@@ -55,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateUserIcon(iconUnicode) {
-        userIconContainer.textContent = String.fromCodePoint(parseInt(iconUnicode, 16));
+        userIconContainer.innerHTML = `<span class="user-icon-id"><i class="fa-icon" data-icon="${iconUnicode}"></i></span>`;
         userIconContainer.classList.remove('hidden');
     }
 

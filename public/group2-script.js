@@ -94,23 +94,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateUserIcon(data.icon);
                 } else {
                     console.error('Icon not found for user');
-                    updateUserIcon('fa-user'); // Default FontAwesome icon
+                    updateUserIcon('1F464'); // Default user icon Unicode
                 }
             })
             .catch(error => {
                 console.error('Error fetching user icon:', error);
-                updateUserIcon('fa-user'); // Default FontAwesome icon
+                updateUserIcon('1F464'); // Default user icon Unicode
             });
     }
 
-    function updateUserIcon(iconClass) {
-        // Remove all existing classes except 'fas'
-        userIcon.className = 'fas';
-
-        // Add the new icon class
-        userIcon.classList.add(iconClass);
-
-        // Show the icon container
+    function updateUserIcon(iconUnicode) {
+        userIconContainer.innerHTML = `&#x${iconUnicode};`;
         userIconContainer.classList.remove('hidden');
     }
 

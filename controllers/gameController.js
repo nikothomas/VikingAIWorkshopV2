@@ -162,6 +162,7 @@ exports.startGame = async () => {
 };
 
 exports.getGroup1Image = async (req, res) => {
+    const { userID } = req.session;
     const supabase = getSupabase();
 
     try {
@@ -189,7 +190,8 @@ exports.getGroup1Image = async (req, res) => {
 
         res.json({
             round: gameState.current_round,
-            image_url: gameState.current_image_url
+            image_url: gameState.current_image_url,
+            userID: userID
         });
     } catch (err) {
         handleError(res, err, 'Failed to fetch current image');

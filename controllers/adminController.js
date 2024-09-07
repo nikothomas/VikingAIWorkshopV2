@@ -156,11 +156,11 @@ exports.getUsersInfo = async (req, res) => {
             { data: connections },
             { data: finalNode }
         ] = await Promise.all([
-            supabase.from('vk_demo_db').select('id, is_bot').eq('group_number', -1),
-            supabase.from('vk_demo_db').select('id, is_bot').eq('group_number', 1),
-            supabase.from('vk_demo_db').select('id, is_bot').eq('group_number', 2),
+            supabase.from('vk_demo_db').select('id, is_bot, icon').eq('group_number', -1),
+            supabase.from('vk_demo_db').select('id, is_bot, icon').eq('group_number', 1),
+            supabase.from('vk_demo_db').select('id, is_bot, icon').eq('group_number', 2),
             supabase.from('connections').select('*'),
-            supabase.from('vk_demo_db').select('id').eq('group_number', -2).single()
+            supabase.from('vk_demo_db').select('id, is_bot, icon').eq('group_number, icon', -2).single()
         ]);
 
         res.json({

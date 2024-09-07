@@ -89,6 +89,9 @@ document.addEventListener('DOMContentLoaded', () => {
             let connectionsInfo = '';
             let buttons = '';
 
+            // Use Unicode from database or default to '\uf007' (user icon)
+            const iconUnicode = user.icon ? user.icon : '\uf007';
+
             if (groupNumber === -1) {
                 // Waiting users
                 buttons = `
@@ -111,8 +114,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 buttons = `<button class="reassign-btn" data-user-id="${user.id}" data-current-group="2">Reassign</button>`;
             }
 
+            // Insert the Unicode icon using the data-icon attribute
             li.innerHTML = `
-            <span>${user.is_bot ? 'Bot' : 'Human'} ID: ${user.id}</span>
+            <span class="user-icon-id"><i class="fa-icon" data-icon="${iconUnicode}"></i> ${user.is_bot ? 'Bot' : 'Human'} ID: ${user.id}</span>
             ${connectionsInfo}
             ${buttons}
             <button class="delete-btn" data-user-id="${user.id}">Delete</button>

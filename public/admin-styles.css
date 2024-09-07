@@ -207,6 +207,25 @@ button:hover {
     font-weight: bold;
 }
 
+/* FontAwesome Icon Style */
+.fa-icon::before {
+    font-family: 'Font Awesome 5 Free'; /* Use the appropriate FontAwesome family */
+    font-weight: 900; /* Solid icons use font-weight 900, adjust based on icon style */
+    content: attr(data-icon); /* Use the data-icon attribute to display the Unicode */
+    font-size: 1.5em; /* Adjust size as needed */
+    display: inline-block;
+    margin-right: 10px;
+}
+
+/* Additional FontAwesome Font Families (if needed) */
+.fa-icon.brands::before {
+    font-family: 'Font Awesome 5 Brands';
+}
+.fa-icon.regular::before {
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 400; /* Regular icons */
+}
+
 @media (max-width: 768px) {
     .user-lists {
         flex-direction: column;
