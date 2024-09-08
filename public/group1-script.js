@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentRound = 0;
     let currentImageUrl = null;
     let userID = null;
+    let lastSubmittedImageUrl = null;
 
     function checkForUpdates() {
         loadGroup1Data();
@@ -30,7 +31,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     currentRound = data.round;
                     if (data.image_url !== currentImageUrl) {
                         currentImageUrl = data.image_url;
-                        updateGameImage(data.image_url, data.crossection);
+                        if (lastSubmittedImageUrl !== currentImageUrl) {
+                            showImageLoading();
+                            updateGameImage(data.image_url, data.crossection);
+                        } else {
+                            showWaiting('Waiting for next round...');
+                        }
                     }
                     console.log(`Updated current round to: ${currentRound}`);
                 }
@@ -55,21 +61,52 @@ document.addEventListener('DOMContentLoaded', () => {
             const startX = Math.floor(imgWidth * crossection.start / 100);
             const width = Math.ceil(imgWidth * crossection.width / 100);
 
-            // Set canvas size to match the container width
             const containerWidth = imageContainer.clientWidth;
             const scale = containerWidth / width;
 
             canvas.width = containerWidth;
             canvas.height = imgHeight * scale;
 
-            // Draw the image scaled to fit the container width
             ctx.drawImage(this, startX, 0, width, imgHeight, 0, 0, canvas.width, canvas.height);
 
             imageContainer.innerHTML = '';
             imageContainer.appendChild(canvas);
+            showImage();
         };
         img.src = imageUrl;
-        showImage();
+    }
+
+    function showImageLoading() {
+        setLoading(true, 'Loading new image...');
+        imageContainer.innerHTML = '';
+        buttonContainer.classList.add('hidden');
+    }
+
+    function submitPrediction(prediction) {
+        setLoading(true, 'Submitting prediction...');
+        getCurrentRound()
+            .then(round => {
+                console.log(`Submitting prediction for round: ${round}`);
+                return fetch('/api/group1/submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prediction, round })
+                });
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(`HTTP error! status: ${response.status}, message: ${text}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log(data.message);
+                lastSubmittedImageUrl = currentImageUrl;
+                showWaiting('Waiting for next round...');
+            })
+            .catch(handleError);
     }
 
     function fetchUserIcon(userID) {
@@ -107,32 +144,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error('Failed to fetch current round');
                 }
             });
-    }
-
-    function submitPrediction(prediction) {
-        setLoading(true, 'Submitting prediction...');
-        getCurrentRound()
-            .then(round => {
-                console.log(`Submitting prediction for round: ${round}`);
-                return fetch('/api/group1/submit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prediction, round })
-                });
-            })
-            .then(response => {
-                if (!response.ok) {
-                    return response.text().then(text => {
-                        throw new Error(`HTTP error! status: ${response.status}, message: ${text}`);
-                    });
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log(data.message);
-                showWaiting('Waiting for next round...');
-            })
-            .catch(handleError);
     }
 
     function showGameOver() {
