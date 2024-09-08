@@ -350,14 +350,19 @@ async function generateAccuracyPlot() {
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, width, height);
 
+        // Define margins
+        const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+        const plotWidth = width - margin.left - margin.right;
+        const plotHeight = height - margin.top - margin.bottom;
+
         // Draw axes
         ctx.strokeStyle = 'black';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(50, 350);
-        ctx.lineTo(750, 350);
-        ctx.moveTo(50, 350);
-        ctx.lineTo(50, 50);
+        ctx.moveTo(margin.left, height - margin.bottom);
+        ctx.lineTo(width - margin.right, height - margin.bottom);
+        ctx.moveTo(margin.left, height - margin.bottom);
+        ctx.lineTo(margin.left, margin.top);
         ctx.stroke();
 
         // Calculate moving average
@@ -372,8 +377,8 @@ async function generateAccuracyPlot() {
         ctx.lineWidth = 2;
         ctx.beginPath();
         accuracies.forEach((point, index) => {
-            const x = 50 + (index / (accuracies.length - 1)) * 700;
-            const y = 350 - point.accuracy * 300;
+            const x = margin.left + (index / (accuracies.length - 1)) * plotWidth;
+            const y = height - margin.bottom - point.accuracy * plotHeight;
             if (index === 0) {
                 ctx.moveTo(x, y);
             } else {
@@ -387,8 +392,8 @@ async function generateAccuracyPlot() {
         ctx.lineWidth = 2;
         ctx.beginPath();
         movingAverage.forEach((point, index) => {
-            const x = 50 + ((index + 2) / (accuracies.length - 1)) * 700;
-            const y = 350 - point.average * 300;
+            const x = margin.left + ((index + 2) / (accuracies.length - 1)) * plotWidth;
+            const y = height - margin.bottom - point.average * plotHeight;
             if (index === 0) {
                 ctx.moveTo(x, y);
             } else {
@@ -400,9 +405,10 @@ async function generateAccuracyPlot() {
         // Add labels
         ctx.fillStyle = 'black';
         ctx.font = '16px Arial';
-        ctx.fillText('Round', 375, 390);
+        ctx.textAlign = 'center';
+        ctx.fillText('Round', width / 2, height - 10);
         ctx.save();
-        ctx.translate(20, 200);
+        ctx.translate(20, height / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('Accuracy', 0, 0);
         ctx.restore();
@@ -410,46 +416,46 @@ async function generateAccuracyPlot() {
         // Add legend
         ctx.font = '14px Arial';
         ctx.fillStyle = 'blue';
-        ctx.fillRect(600, 50, 20, 10);
+        ctx.fillRect(width - margin.right - 150, margin.top, 20, 10);
         ctx.fillStyle = 'black';
-        ctx.fillText('Accuracy', 625, 60);
+        ctx.fillText('Accuracy', width - margin.right - 125, margin.top + 10);
         ctx.fillStyle = 'red';
-        ctx.fillRect(600, 70, 20, 10);
+        ctx.fillRect(width - margin.right - 150, margin.top + 20, 20, 10);
         ctx.fillStyle = 'black';
-        ctx.fillText('3-Round Moving Average', 625, 80);
+        ctx.fillText('3-Round Moving Average', width - margin.right - 125, margin.top + 30);
 
         // Add tick marks and labels for y-axis
         ctx.strokeStyle = 'black';
         ctx.lineWidth = 1;
         ctx.textAlign = 'right';
         for (let i = 0; i <= 10; i++) {
-            const y = 350 - i * 30;
+            const y = height - margin.bottom - i * (plotHeight / 10);
             ctx.beginPath();
-            ctx.moveTo(45, y);
-            ctx.lineTo(55, y);
+            ctx.moveTo(margin.left - 5, y);
+            ctx.lineTo(margin.left, y);
             ctx.stroke();
-            ctx.fillText((i / 10).toFixed(2), 40, y + 5);
+            ctx.fillText((i / 10).toFixed(2), margin.left - 10, y + 5);
         }
 
         // Add tick marks and labels for x-axis
         ctx.textAlign = 'center';
         const tickInterval = Math.ceil(accuracies.length / 10);
         for (let i = 0; i < accuracies.length; i += tickInterval) {
-            const x = 50 + (i / (accuracies.length - 1)) * 700;
+            const x = margin.left + (i / (accuracies.length - 1)) * plotWidth;
             ctx.beginPath();
-            ctx.moveTo(x, 350);
-            ctx.lineTo(x, 355);
+            ctx.moveTo(x, height - margin.bottom);
+            ctx.lineTo(x, height - margin.bottom + 5);
             ctx.stroke();
-            ctx.fillText(accuracies[i].round.toString(), x, 370);
+            ctx.fillText(accuracies[i].round.toString(), x, height - margin.bottom + 20);
         }
 
         // Add ticks for the last round of each moving average window
         ctx.strokeStyle = 'red';
         movingAverage.forEach((point, index) => {
-            const x = 50 + ((index + 2) / (accuracies.length - 1)) * 700;
+            const x = margin.left + ((index + 2) / (accuracies.length - 1)) * plotWidth;
             ctx.beginPath();
-            ctx.moveTo(x, 350);
-            ctx.lineTo(x, 360);
+            ctx.moveTo(x, height - margin.bottom);
+            ctx.lineTo(x, height - margin.bottom + 10);
             ctx.stroke();
         });
 

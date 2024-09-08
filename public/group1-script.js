@@ -28,8 +28,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } else if (data.round !== currentRound || data.image_url !== currentImageUrl) {
                     currentRound = data.round;
-                    currentImageUrl = data.image_url;
-                    updateGameImage(data.image_url, data.crossection);
+                    if (data.image_url !== currentImageUrl) {
+                        currentImageUrl = data.image_url;
+                        updateGameImage(data.image_url, data.crossection);
+                    }
                     console.log(`Updated current round to: ${currentRound}`);
                 }
 
@@ -169,5 +171,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Start the update cycle
     checkForUpdates();
-    const updateInterval = setInterval(checkForUpdates, 500);
+    const updateInterval = setInterval(checkForUpdates, 5000);
 });
