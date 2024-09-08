@@ -55,10 +55,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const startX = Math.floor(imgWidth * crossection.start / 100);
             const width = Math.ceil(imgWidth * crossection.width / 100);
 
-            canvas.width = width;
-            canvas.height = imgHeight;
+            // Set canvas size to match the container width
+            const containerWidth = imageContainer.clientWidth;
+            const scale = containerWidth / width;
 
-            ctx.drawImage(this, startX, 0, width, imgHeight, 0, 0, width, imgHeight);
+            canvas.width = containerWidth;
+            canvas.height = imgHeight * scale;
+
+            // Draw the image scaled to fit the container width
+            ctx.drawImage(this, startX, 0, width, imgHeight, 0, 0, canvas.width, canvas.height);
 
             imageContainer.innerHTML = '';
             imageContainer.appendChild(canvas);
