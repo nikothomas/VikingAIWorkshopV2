@@ -191,7 +191,7 @@ async function backpropagateWeightsForRound(round) {
             .single();
 
         const finalNodeId = finalNode.id;
-        const learningRate = 0.1;
+        const learningRate = 0.05;
 
         // Calculate weighted sum for the final node
         const weightedSum = currentGameState.group2_predictions.reduce((sum, pred) => {

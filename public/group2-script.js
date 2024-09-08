@@ -210,5 +210,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateUIState('loading');
     checkForUpdates();
-    const updateInterval = setInterval(checkForUpdates, 1000);
+    const updateInterval = setInterval(checkForUpdates, 500);
 });

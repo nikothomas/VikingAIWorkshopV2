@@ -16,11 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch('/api/group1/get_image')
             .then(response => response.json())
             .then(data => {
-                if (data.userID && data.userID !== userID) {
-                    userID = data.userID;
-                    fetchUserIcon(userID);
-                }
-
                 if (data.gameOver) {
                     showGameOver();
                     clearInterval(updateInterval);
@@ -36,6 +31,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     currentImageUrl = data.image_url;
                     updateGameImage(data.image_url, data.crossection);
                     console.log(`Updated current round to: ${currentRound}`);
+                }
+
+                if (data.userID && data.userID !== userID) {
+                    userID = data.userID;
+                    fetchUserIcon(userID);
                 }
             })
             .catch(handleError);
@@ -60,9 +60,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             imageContainer.innerHTML = '';
             imageContainer.appendChild(canvas);
-            showImage();
         };
         img.src = imageUrl;
+        showImage();
     }
 
     function fetchUserIcon(userID) {
@@ -87,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
         userIconContainer.innerHTML = `<span class="user-icon-id"><i class="fa-icon" data-icon="${iconUnicode}"></i></span>`;
         userIconContainer.classList.remove('hidden');
     }
+
 
     function getCurrentRound() {
         return fetch('/api/group1/get_image')
@@ -138,6 +139,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('.container').appendChild(gameOverDiv);
     }
 
+
+
     function showWaiting(message) {
         setLoading(true, message);
         imageContainer.classList.add('hidden');
@@ -147,10 +150,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function setLoading(isLoading, message = 'Loading...') {
         spinnerContainer.classList.toggle('hidden', !isLoading);
         spinnerContainer.querySelector('p').textContent = message;
-        // Ensure user icon remains visible during loading
-        if (userIconContainer.innerHTML) {
-            userIconContainer.classList.remove('hidden');
-        }
     }
 
     function showImage() {
