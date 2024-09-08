@@ -15,9 +15,38 @@ const OCEAN_NATURE_SCIENCE_ICON_UNICODES = [
     '\uf185', // Sun
     '\uf610', // Microscope
     '\uf7c0', // Satellite
-    '\uf5b0'  // Telescope
+    '\uf5b0', // Telescope
+    '\uf1e6', // Plug (for electricity/energy)
+    '\uf72e', // Wind
+    '\uf043', // Tint (water droplet)
+    '\uf5c8', // DNA
+    '\uf75f', // Molecular structure
+    '\uf70e', // Snowflake
+    '\uf740', // Temperature High
+    '\uf750', // Temperature Low
+    '\uf0e7', // Bolt (lightning)
+    '\uf6e3', // Space Shuttle
+    '\uf562', // Solar Panel
+    '\uf0c4', // Cut (for DNA/genetics)
+    '\uf72f', // Cloud with (Rain)
+    '\uf75e', // Cloud with Moon
+    '\uf48e', // Clipboard (for scientific data)
+    '\uf492', // Vial
+    '\uf471', // Paw (for zoology)
+    '\uf472', // Paw Prints
+    '\uf548', // Ruler
+    '\uf12e', // Puzzle Piece (for problem-solving)
+    '\uf7d9', // Tools (for engineering)
+    '\uf121', // Code (for computational science)
+    '\uf0eb', // Lightbulb (for ideas/innovation)
+    '\uf542', // Project Diagram
+    '\uf6cf', // Meteor
+    '\uf753', // Thermometer
+    '\uf06d', // Fire
+    '\uf21e', // Heartbeat (for life sciences)
+    '\uf48b', // Binoculars (for observation)
+    '\uf002', // Magnifying Glass (for detailed examination)
 ];
-
 // Specific icons for robot and final node
 const ROBOT_ICON_UNICODE = '\uf544'; // Robot
 const FINAL_NODE_ICON_UNICODE = '\uf6ff'; // Network wired (for the final node)

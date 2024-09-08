@@ -48,6 +48,10 @@ app.get('/group1', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'group1.html'));
 });
 
+app.get('/accuracyplot', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'accuracy_plot.png'));
+});
+
 app.get('/group2', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'group2.html'));
 });
