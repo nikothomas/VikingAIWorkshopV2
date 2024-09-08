@@ -11,11 +11,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const createFinalNodeBtn = document.getElementById('create-final-node-bot');
     const finalNodeInfo = document.getElementById('final-node-info');
     const startGameBtn = document.getElementById('start-game');
+    const assignSubgroupsBtn = document.getElementById('assign-subgroups-btn');
+
+
     // Image upload event listener
     imageUploadForm.addEventListener('submit', handleImageUpload);
     createBotsForm.addEventListener('submit', createBots);
     resetGameBtn.addEventListener('click', resetGame);
     createFinalNodeBtn.addEventListener('click', createFinalNodeBot);
+    assignSubgroupsBtn.addEventListener('click', assignSubgroups);
 
     function getAuthHeaders() {
         const token = localStorage.getItem('adminToken');
@@ -79,6 +83,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 createBotsForm.querySelectorAll('input, select, button').forEach(el => el.disabled = data.gameStarted && !data.gameOver);
             })
             .catch(error => console.error('Error fetching game stats:', error));
+    }
+
+    function assignSubgroups() {
+        fetch('/api/admin/assign-subgroups', {
+            method: 'POST',
+            headers: getAuthHeaders()
+        })
+            .then(response => response.json())
+            .then(data => {
+                showMessage(data.message, 'success');
+                fetchUsersInfo();
+            })
+            .catch(error => {
+                console.error('Error assigning subgroups:', error);
+                showMessage('Failed to assign subgroups.', 'error');
+            });
     }
 
     function updateUserList(listElement, users, groupNumber, connections, finalNodeId) {
@@ -302,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
         checkFinalNodeBot();
         fetchUsersInfo();
         updateGameStats();
-    }, 3000);
+    }, 2000);
     // Function to handle image uploads
     function handleImageUpload(event) {
         event.preventDefault();

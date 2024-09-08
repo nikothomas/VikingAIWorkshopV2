@@ -7,7 +7,8 @@ const { initializeSupabase } = require('./db/supabase');
 const routes = require('./routes');
 const cors = require('cors');
 const { startGameLoop } = require('./gameLoop');
-const networkConnections = require('./neuralNetworkConnections'); // Import the module to start connection updates
+const networkConnections = require('./neuralNetworkConnections');
+const ip = require('ip');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -64,7 +65,10 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'An unexpected error occurred' });
 });
 
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+const localIP = ip.address();
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on http://${localIP}:${PORT}`);
+    console.log(`You can also access it via http://localhost:${PORT}`);
     startGameLoop();
 });

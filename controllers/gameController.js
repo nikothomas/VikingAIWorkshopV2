@@ -296,22 +296,20 @@ exports.getGroup2Data = async (req, res) => {
         if (connectionsError) throw connectionsError;
 
         let weightedSum = 0;
-        let totalWeight = 0;
 
         for (const prediction of gameState.group1_predictions) {
             const connection = connections.find(conn => conn.source_user_id === prediction.user_id);
             if (connection) {
                 weightedSum += prediction.prediction * connection.weight;
-                totalWeight += connection.weight;
             }
         }
 
-        const weightedAverage = totalWeight > 0 ? weightedSum / totalWeight : 0;
-        const normalizedAverage = Math.max(-1, Math.min(1, weightedAverage));
+        // Clamp the weightedSum between -5 and 5
+        const clampedWeightedSum = Math.max(-5, Math.min(5, weightedSum));
 
         res.json({
             round: gameState.current_round,
-            weightedAverage: normalizedAverage,
+            weightedSum: clampedWeightedSum,
             userID: userID
         });
     } catch (err) {

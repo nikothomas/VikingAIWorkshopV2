@@ -139,10 +139,6 @@ exports.assignGroup = async (req, res) => {
             .update({ group_number: groupNumber })
             .eq('id', userID);
 
-        if (groupNumber === 1) {
-            await gameController.assignSubgroups();
-        }
-
         res.json({ message: `User assigned to group ${groupNumber}` });
     } catch (error) {
         console.error('Failed to assign user to group:', error);

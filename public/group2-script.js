@@ -88,23 +88,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function fetchUserIcon(userID) {
         fetch(`/api/icon/${userID}`)
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.icon) {
                     updateUserIcon(data.icon);
                 } else {
                     console.error('Icon not found for user');
-                    updateUserIcon('1F464'); // Default user icon Unicode
                 }
             })
-            .catch(error => {
-                console.error('Error fetching user icon:', error);
-                updateUserIcon('1F464'); // Default user icon Unicode
-            });
+            .catch(error => console.error('Error fetching user icon:', error));
     }
 
     function updateUserIcon(iconUnicode) {
-        userIconContainer.innerHTML = `&#x${iconUnicode};`;
+        userIconContainer.innerHTML = `<span class="user-icon-id"><i class="fa-icon" data-icon="${iconUnicode}"></i></span>`;
         userIconContainer.classList.remove('hidden');
     }
 
@@ -151,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updatePredictionData(data) {
-        const newWeightedAverage = data.weightedAverage;
+        const newWeightedAverage = data.weightedSum;
 
         if (newWeightedAverage !== lastWeightedAverage) {
             updatePredictionDisplay(newWeightedAverage);
@@ -162,22 +163,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updatePredictionDisplay(value) {
-        console.log('Original value:', value);
-
-        // Clamp the value to be between -1 and 1
-        const clampedValue = Math.max(-1, Math.min(1, value));
-        console.log('Clamped value:', clampedValue);
+        // Value is already clamped between -5 and 5 from the backend
 
         // Calculate the percentage for phytoplankton (green)
-        const phytoplanktonPercentage = ((clampedValue + 1) / 2) * 100;
+        const phytoplanktonPercentage = ((value + 5) / 10) * 100;
 
         // Update the prediction bar
         predictionBar.style.setProperty('--phytoplankton-percentage', `${phytoplanktonPercentage}%`);
 
-        // Update the likelihood text based on the clamped value
-        const likelihood = clampedValue > 0 ? "Likely" : "Not Likely";
-        const percentage = Math.abs(clampedValue * 100).toFixed(1);
-        const newText = `${likelihood} to be phytoplankton (${percentage}%)`;
+        // Determine likelihood based on the value
+        let likelihood;
+        if (value > 3) likelihood = "Very Likely";
+        else if (value > 1) likelihood = "Likely";
+        else if (value > -1) likelihood = "Uncertain";
+        else if (value > -3) likelihood = "Unlikely";
+        else likelihood = "Very Unlikely";
+
+        // Calculate confidence percentage
+        const confidencePercentage = (Math.abs(value) / 5 * 100).toFixed(1);
+
+        const newText = `${likelihood} to be phytoplankton (${confidencePercentage}% confidence)`;
 
         if (predictionText.textContent !== newText) {
             predictionText.textContent = newText;

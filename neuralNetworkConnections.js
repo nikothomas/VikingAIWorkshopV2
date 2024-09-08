@@ -1,6 +1,6 @@
 const { getSupabase } = require('./db/supabase');
 
-const CONNECTION_UPDATE_INTERVAL = 11000; // Update every 10 seconds
+const CONNECTION_UPDATE_INTERVAL = 10000; // Update every 10 seconds
 const CONNECTIONS_PER_GROUP1 = 2; // Exactly 2 connections per Group 1 node
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 

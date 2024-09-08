@@ -1,73 +1,116 @@
 const { getSupabase } = require('./db/supabase');
-
-let gameInterval;
-let checkGameStartInterval;
-const GAME_TICK_INTERVAL = 15000; // 15 seconds
-const GAME_START_CHECK_INTERVAL = 9000; // 9 seconds
 const { createCanvas } = require('canvas');
 const fs = require('fs');
 const path = require('path');
 
-async function gameLoop() {
+const GAME_TICK_INTERVAL = 5000; // 5 seconds
+const GAME_START_CHECK_INTERVAL = 5000; // 5 seconds
+
+let gameInterval;
+let checkGameStartInterval;
+let currentGameState = null;
+
+async function fetchGameState() {
     const supabase = getSupabase();
+    const { data: gameState, error } = await supabase
+        .from('game_state')
+        .select('*')
+        .order('current_round', { ascending: false })
+        .limit(1)
+        .single();
 
+    if (error) throw error;
+    return gameState;
+}
+
+async function updateGameState(updates) {
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+        .from('game_state')
+        .update(updates)
+        .eq('current_round', currentGameState.current_round)
+        .select()
+        .single();
+
+    if (error) throw error;
+    currentGameState = data;
+}
+
+async function gameLoop() {
     try {
-        // Fetch current game state
-        const { data: gameState, error: stateError } = await supabase
-            .from('game_state')
-            .select('*')
-            .order('current_round', { ascending: false })
-            .limit(1)
-            .single();
+        currentGameState = await fetchGameState();
+        if (!currentGameState.game_started) return console.log('Game has not started yet');
 
-        if (stateError) throw stateError;
-        if (!gameState.game_started) return console.log('Game has not started yet');
-
-        // Handle round completion and weight update
-        if (gameState.is_round_complete) {
-            if (!gameState.is_weights_updated) {
-                await backpropagateWeightsForRound(gameState.current_round);
+        if (currentGameState.is_round_complete) {
+            if (!currentGameState.is_weights_updated) {
+                await backpropagateWeightsForRound(currentGameState.current_round);
             } else {
                 await startNewRound();
             }
             return;
         }
 
-        // Group 1 prediction handling
-        if (!gameState.group1_complete) await handleGroup1Bots(gameState);
-
-        const { data: group1Users, error: group1Error } = await supabase
-            .from('vk_demo_db')
-            .select('id')
-            .eq('group_number', 1);
-
-        if (group1Error) throw group1Error;
-
-        if (gameState.group1_predictions.length === group1Users.length && !gameState.group1_complete) {
-            await supabase
-                .from('game_state')
-                .update({ group1_complete: true })
-                .eq('current_round', gameState.current_round);
+        if (!currentGameState.group1_complete) {
+            await handleGroupBots(1);
+            await checkGroupCompletion(1);
         }
 
-        // Group 2 prediction handling
-        if (gameState.group1_complete) await handleGroup2Bots(gameState);
-
-        const { data: group2Users, error: group2Error } = await supabase
-            .from('vk_demo_db')
-            .select('id')
-            .eq('group_number', 2);
-
-        if (group2Error) throw group2Error;
-
-        // After making the final node bot prediction, calculate and store the accuracy
-        if (gameState.group2_predictions.length === group2Users.length && !gameState.is_round_complete) {
-            await makeFinalNodeBotPrediction(gameState.current_round);
-            await storeRoundAccuracy(gameState.current_round);
+        if (currentGameState.group1_complete && !currentGameState.group2_complete) {
+            await handleGroupBots(2);
+            await checkGroupCompletion(2);
         }
 
+        if (currentGameState.group2_complete && !currentGameState.is_round_complete) {
+            await makeFinalNodeBotPrediction(currentGameState.current_round);
+            await storeRoundAccuracy(currentGameState.current_round);
+        }
     } catch (error) {
         console.error('Error in game loop:', error);
+    }
+}
+
+async function handleGroupBots(groupNumber) {
+    const supabase = getSupabase();
+    const { data: bots, error } = await supabase
+        .from('vk_demo_db')
+        .select('id')
+        .eq('group_number', groupNumber)
+        .eq('is_bot', true)
+        .eq('has_given_input', false);
+
+    if (error) throw error;
+
+    const predictions = bots.map(bot => ({
+        user_id: bot.id,
+        prediction: Math.random() < 0.5 ? -1 : 1
+    }));
+
+    if (predictions.length > 0) {
+        const updatedPredictions = [
+            ...currentGameState[`group${groupNumber}_predictions`],
+            ...predictions
+        ];
+
+        await updateGameState({ [`group${groupNumber}_predictions`]: updatedPredictions });
+
+        await supabase
+            .from('vk_demo_db')
+            .update({ has_given_input: true })
+            .in('id', bots.map(bot => bot.id));
+    }
+}
+
+async function checkGroupCompletion(groupNumber) {
+    const supabase = getSupabase();
+    const { data: users, error } = await supabase
+        .from('vk_demo_db')
+        .select('id')
+        .eq('group_number', groupNumber);
+
+    if (error) throw error;
+
+    if (currentGameState[`group${groupNumber}_predictions`].length === users.length) {
+        await updateGameState({ [`group${groupNumber}_complete`]: true });
     }
 }
 
@@ -75,13 +118,7 @@ async function makeFinalNodeBotPrediction(round) {
     const supabase = getSupabase();
 
     try {
-        const { data: gameState } = await supabase
-            .from('game_state')
-            .select('group2_predictions, current_image_id, final_prediction')
-            .eq('current_round', round)
-            .single();
-
-        if (gameState.final_prediction !== null) {
+        if (currentGameState.final_prediction !== null) {
             return console.log(`Final prediction for round ${round} already made`);
         }
 
@@ -91,42 +128,34 @@ async function makeFinalNodeBotPrediction(round) {
             .eq('target_user_id', (await supabase.from('vk_demo_db').select('id').eq('group_number', -2).single()).data.id);
 
         let weightedSum = 0;
-        for (const prediction of gameState.group2_predictions) {
+        for (const prediction of currentGameState.group2_predictions) {
             const connection = connections.find(c => c.source_user_id === prediction.user_id);
             if (connection) {
                 weightedSum += prediction.prediction * connection.weight;
             }
         }
 
-        // Apply sigmoid to convert weighted sum to a probability
-        const sigmoidResult = sigmoid(weightedSum);
-
-        // Threshold to decide between 1 (phytoplankton) or -1 (not phytoplankton)
-        const finalPrediction = sigmoidResult >= 0.5 ? 1 : -1;
+        // Use sign function instead of sigmoid for binary classification
+        const finalPrediction = Math.sign(weightedSum);
 
         const { data: correctAnswer } = await supabase
             .from('images')
             .select('correct_answer')
-            .eq('id', gameState.current_image_id)
+            .eq('id', currentGameState.current_image_id)
             .single();
 
         const isCorrect = finalPrediction === correctAnswer.correct_answer;
 
         await supabase
             .from('vk_demo_db')
-            .update({
-                has_given_input: true
-            })
-            .eq('group_number', '-2')
+            .update({ has_given_input: true })
+            .eq('group_number', '-2');
 
-        await supabase
-            .from('game_state')
-            .update({
-                final_prediction: finalPrediction,
-                is_round_complete: true,
-                is_weights_updated: false  // Reset this flag for the new round
-            })
-            .eq('current_round', round);
+        await updateGameState({
+            final_prediction: finalPrediction,
+            is_round_complete: true,
+            is_weights_updated: false
+        });
 
         console.log(`Final prediction for round ${round}: ${finalPrediction}, Correct: ${isCorrect}`);
     } catch (error) {
@@ -140,217 +169,92 @@ async function backpropagateWeightsForRound(round) {
     try {
         console.log(`Starting weight updates for round ${round}`);
 
-        // Fetch game state
-        const { data: gameState, error: gameStateError } = await supabase
-            .from('game_state')
-            .select('group1_predictions, group2_predictions, current_image_id, final_prediction, is_round_complete, is_weights_updated')
-            .eq('current_round', round)
-            .single();
-
-        if (gameStateError) {
-            throw new Error(`Failed to fetch game state: ${gameStateError.message}`);
-        }
-
-        if (!gameState.is_round_complete || gameState.is_weights_updated) {
+        if (!currentGameState.is_round_complete || currentGameState.is_weights_updated) {
             console.log(`Weights already updated or round not complete for round ${round}.`);
             return;
         }
 
-        // Fetch correct answer
-        const { data: correctAnswer, error: correctAnswerError } = await supabase
+        const { data: correctAnswer } = await supabase
             .from('images')
             .select('correct_answer')
-            .eq('id', gameState.current_image_id)
+            .eq('id', currentGameState.current_image_id)
             .single();
 
-        if (correctAnswerError) {
-            throw new Error(`Failed to fetch correct answer: ${correctAnswerError.message}`);
-        }
-
-        console.log(`Correct answer for round ${round}: ${correctAnswer.correct_answer}`);
-        console.log(`Final prediction for round ${round}: ${gameState.final_prediction}`);
-
-        // Fetch connections
-        const { data: connections, error: connectionsError } = await supabase
+        const { data: connections } = await supabase
             .from('connections')
             .select('*');
 
-        if (connectionsError) {
-            throw new Error(`Failed to fetch connections: ${connectionsError.message}`);
-        }
-
-        console.log(`Fetched ${connections.length} connections`);
-
-        // Fetch final node ID
-        const { data: finalNode, error: finalNodeError } = await supabase
+        const { data: finalNode } = await supabase
             .from('vk_demo_db')
             .select('id')
             .eq('group_number', -2)
             .single();
 
-        if (finalNodeError) {
-            throw new Error(`Failed to fetch final node: ${finalNodeError.message}`);
-        }
-
         const finalNodeId = finalNode.id;
-        console.log(`Final node ID: ${finalNodeId}`);
+        const learningRate = 0.1;
 
-        const learningRate = 0.05;
+        // Calculate weighted sum for the final node
+        const weightedSum = currentGameState.group2_predictions.reduce((sum, pred) => {
+            const connection = connections.find(c => c.source_user_id === pred.user_id && c.target_user_id === finalNodeId);
+            return sum + (connection ? pred.prediction * connection.weight : 0);
+        }, 0);
 
-        // Correct error calculation
-        const outputError = correctAnswer.correct_answer - gameState.final_prediction;
-        console.log(`Output error: ${outputError} (Correct Answer: ${correctAnswer.correct_answer}, Final Prediction: ${gameState.final_prediction})`);
+        // Calculate Hinge Loss
+        const hingeLoss = Math.max(0, 1 - correctAnswer.correct_answer * weightedSum);
+        console.log(`Round ${round} - Hinge Loss: ${hingeLoss.toFixed(4)}`);
+        console.log(`  Correct Answer: ${correctAnswer.correct_answer}, Weighted Sum: ${weightedSum.toFixed(4)}`);
 
-        // Update weights for connections between Group 2 and Final Node
-        console.log('Updating weights for Group 2 to Final Node connections:');
-        for (const prediction of gameState.group2_predictions) {
+        // Object to store all weight updates
+        const weightUpdates = {};
+
+        // Update weights for Group 2 to Final Node
+        for (const prediction of currentGameState.group2_predictions) {
             const connection = connections.find(c => c.source_user_id === prediction.user_id && c.target_user_id === finalNodeId);
             if (connection) {
-                const weightUpdate = learningRate * outputError * prediction.prediction;
-                const oldWeight = connection.weight;
-                const newWeight = oldWeight + weightUpdate;
-
-                try {
-                    const { error: updateError } = await supabase
-                        .from('connections')
-                        .update({ weight: newWeight })
-                        .eq('id', connection.id);
-
-                    if (updateError) {
-                        throw new Error(`Failed to update Group 2 to Final Node connection: ${updateError.message}`);
-                    }
-                } catch (error) {
-                    console.error(`    Error updating Group 2 to Final Node connection for user ${prediction.user_id}:`, error);
-                }
+                const gradient = hingeLoss > 0 ? -correctAnswer.correct_answer * prediction.prediction : 0;
+                const weightUpdate = learningRate * gradient;
+                const newWeight = connection.weight - weightUpdate;
+                weightUpdates[connection.id] = newWeight;
             }
         }
 
-        // Calculate errors for Group 2 nodes
-        const group2Errors = {};
-        console.log('Calculating errors for Group 2 nodes:');
-        for (const g2Prediction of gameState.group2_predictions) {
+        // Calculate gradients for Group 2 nodes
+        const group2Gradients = {};
+        for (const g2Prediction of currentGameState.group2_predictions) {
             const connection = connections.find(c => c.source_user_id === g2Prediction.user_id && c.target_user_id === finalNodeId);
             if (connection) {
-                group2Errors[g2Prediction.user_id] = outputError * connection.weight;
-
+                group2Gradients[g2Prediction.user_id] = hingeLoss > 0 ? -correctAnswer.correct_answer * connection.weight : 0;
             }
         }
 
-        // Update weights for connections between Group 1 and Group 2
-        console.log('Updating weights for Group 1 to Group 2 connections:');
-        for (const g1Prediction of gameState.group1_predictions) {
-            for (const g2Prediction of gameState.group2_predictions) {
+        // Update weights for Group 1 to Group 2
+        for (const g1Prediction of currentGameState.group1_predictions) {
+            for (const g2Prediction of currentGameState.group2_predictions) {
                 const connection = connections.find(c => c.source_user_id === g1Prediction.user_id && c.target_user_id === g2Prediction.user_id);
                 if (connection) {
-                    const g2Error = group2Errors[g2Prediction.user_id];
-                    const weightUpdate = learningRate * g2Error * g1Prediction.prediction;
-                    const oldWeight = connection.weight;
-                    const newWeight = oldWeight + weightUpdate;
-
-                    try {
-                        const { error: updateError } = await supabase
-                            .from('connections')
-                            .update({ weight: newWeight })
-                            .eq('id', connection.id);
-
-                        if (updateError) {
-                            throw new Error(`Failed to update Group 1 to Group 2 connection: ${updateError.message}`);
-                        }
-                    } catch (error) {
-                        console.error(`    Error updating Group 1 to Group 2 connection for users ${g1Prediction.user_id} to ${g2Prediction.user_id}:`, error);
-                    }
+                    const g2Gradient = group2Gradients[g2Prediction.user_id];
+                    const weightUpdate = learningRate * g2Gradient * g1Prediction.prediction;
+                    const newWeight = connection.weight - weightUpdate;
+                    weightUpdates[connection.id] = newWeight;
                 }
             }
         }
 
-        // Mark weights as updated
-        const { error: finalUpdateError } = await supabase
-            .from('game_state')
-            .update({ is_weights_updated: true })
-            .eq('current_round', round);
+        // Batch update all weights
+        const updatePromises = Object.entries(weightUpdates).map(([connectionId, newWeight]) =>
+            supabase
+                .from('connections')
+                .update({ weight: newWeight })
+                .eq('id', connectionId)
+        );
 
-        if (finalUpdateError) {
-            throw new Error(`Failed to mark weights as updated: ${finalUpdateError.message}`);
-        }
+        await Promise.all(updatePromises);
+
+        await updateGameState({ is_weights_updated: true });
 
         console.log(`Weights updated successfully for round ${round}.`);
     } catch (error) {
         console.error(`Error in backpropagateWeightsForRound for round ${round}:`, error);
-        // You might want to add additional error handling here, such as notifying an admin or retrying the operation
-    }
-}
-
-
-async function handleGroup1Bots(gameState) {
-    const supabase = getSupabase();
-    const { data: group1Bots, error } = await supabase
-        .from('vk_demo_db')
-        .select('id')
-        .eq('group_number', 1)
-        .eq('is_bot', true);
-
-    if (error) throw error;
-
-    for (const bot of group1Bots) {
-        const alreadyPredicted = gameState.group1_predictions.some(p => p.user_id === bot.id);
-        if (!alreadyPredicted) {
-            await submitBotPrediction(bot.id, gameState.current_round, 1);
-        }
-    }
-}
-
-async function handleGroup2Bots(gameState) {
-    const supabase = getSupabase();
-    const { data: group2Bots, error } = await supabase
-        .from('vk_demo_db')
-        .select('id')
-        .eq('group_number', 2)
-        .eq('is_bot', true);
-
-    if (error) throw error;
-
-    for (const bot of group2Bots) {
-        const alreadyPredicted = gameState.group2_predictions.some(p => p.user_id === bot.id);
-        if (!alreadyPredicted) {
-            await submitBotPrediction(bot.id, gameState.current_round, 2);
-        }
-    }
-}
-
-async function submitBotPrediction(botId, round, groupNumber) {
-    const prediction = Math.random() < 0.5 ? -1 : 1;
-    const supabase = getSupabase();
-
-    try {
-        const { data: gameState, error } = await supabase
-            .from('game_state')
-            .select(`current_round, group${groupNumber}_predictions`)
-            .eq('current_round', round)
-            .single();
-
-        if (error) throw error;
-
-        const alreadyPredicted = gameState[`group${groupNumber}_predictions`].some(p => p.user_id === botId);
-        if (alreadyPredicted) return;
-
-        const updatedPredictions = [
-            ...gameState[`group${groupNumber}_predictions`],
-            { user_id: botId, prediction }
-        ];
-
-        await supabase
-            .from('game_state')
-            .update({ [`group${groupNumber}_predictions`]: updatedPredictions })
-            .eq('current_round', round);
-
-        await supabase
-            .from('vk_demo_db')
-            .update({ has_given_input: true })
-            .eq('id', botId);
-
-        console.log(`Bot ${botId} prediction submitted for round ${round}`);
-    } catch (error) {
-        console.error(`Error submitting prediction for bot ${botId}:`, error);
     }
 }
 
@@ -358,13 +262,6 @@ async function startNewRound() {
     const supabase = getSupabase();
 
     try {
-        const { data: currentState } = await supabase
-            .from('game_state')
-            .select('*')
-            .order('current_round', { ascending: false })
-            .limit(1)
-            .single();
-
         const { data: newImage } = await supabase
             .from('images')
             .select('id, url')
@@ -382,20 +279,23 @@ async function startNewRound() {
             .update({ used: true })
             .eq('id', newImage.id);
 
+        const newGameState = {
+            current_round: currentGameState.current_round + 1,
+            current_image_id: newImage.id,
+            current_image_url: newImage.url,
+            group1_predictions: [],
+            group2_predictions: [],
+            group1_complete: false,
+            group2_complete: false,
+            is_round_complete: false,
+            final_prediction: null,
+            game_started: true,
+            is_weights_updated: false
+        };
+
         await supabase
             .from('game_state')
-            .insert({
-                current_round: currentState.current_round + 1,
-                current_image_id: newImage.id,
-                current_image_url: newImage.url,
-                group1_predictions: [],
-                group2_predictions: [],
-                group1_complete: false,
-                is_round_complete: false,
-                final_prediction: null,
-                game_started: true,
-                is_weights_updated: false
-            })
+            .insert(newGameState)
             .select()
             .single();
 
@@ -404,6 +304,7 @@ async function startNewRound() {
             .update({ has_given_input: false })
             .neq('group_number', 100);
 
+        currentGameState = newGameState;
         console.log('New round started');
     } catch (error) {
         console.error('Error starting new round:', error);
@@ -411,76 +312,17 @@ async function startNewRound() {
     }
 }
 
-function startGameLoop() {
-    if (!gameInterval) {
-        gameInterval = setInterval(gameLoop, GAME_TICK_INTERVAL);
-        console.log('Game loop started');
-    }
-}
-
-function stopGameLoop() {
-    if (gameInterval) {
-        clearInterval(gameInterval);
-        gameInterval = null;
-        console.log('Game loop stopped');
-        startCheckGameStartInterval();
-    }
-}
-
-async function checkGameStart() {
-    const supabase = getSupabase();
-
-    try {
-        const { data: gameState, error } = await supabase
-            .from('game_state')
-            .select('game_started')
-            .order('current_round', { ascending: false })
-            .limit(1)
-            .single();
-
-        if (error) throw error;
-
-        if (gameState.game_started) {
-            startGameLoop();
-            stopCheckGameStartInterval();
-        }
-    } catch (error) {
-        console.error('Error checking game start:', error);
-    }
-}
-
-function startCheckGameStartInterval() {
-    if (!checkGameStartInterval) {
-        checkGameStartInterval = setInterval(checkGameStart, GAME_START_CHECK_INTERVAL);
-        console.log('Checking game start every 10 seconds.');
-    }
-}
-
-function stopCheckGameStartInterval() {
-    if (checkGameStartInterval) {
-        clearInterval(checkGameStartInterval);
-        checkGameStartInterval = null;
-        console.log('Stopped checking game start.');
-    }
-}
-
 async function storeRoundAccuracy(round) {
     const supabase = getSupabase();
 
     try {
-        const { data: gameState } = await supabase
-            .from('game_state')
-            .select('final_prediction, current_image_id')
-            .eq('current_round', round)
-            .single();
-
         const { data: image } = await supabase
             .from('images')
             .select('correct_answer')
-            .eq('id', gameState.current_image_id)
+            .eq('id', currentGameState.current_image_id)
             .single();
 
-        const accuracy = gameState.final_prediction === image.correct_answer ? 1 : 0;
+        const accuracy = currentGameState.final_prediction === image.correct_answer ? 1 : 0;
 
         await supabase
             .from('round_accuracies')
@@ -490,7 +332,6 @@ async function storeRoundAccuracy(round) {
         console.error('Error storing round accuracy:', error);
     }
 }
-
 async function generateAccuracyPlot() {
     const supabase = getSupabase();
 
@@ -636,6 +477,7 @@ async function endGame() {
                 group1_predictions: [],
                 group2_predictions: [],
                 group1_complete: true,
+                group2_complete: true,
                 is_round_complete: true,
                 game_over: true,
                 game_started: false,
@@ -647,7 +489,6 @@ async function endGame() {
         stopGameLoop();
         console.log('Game ended.');
 
-        // Generate and save the accuracy plot
         const plotPath = await generateAccuracyPlot();
         console.log(`Accuracy plot saved at: ${plotPath}`);
 
@@ -659,6 +500,49 @@ async function endGame() {
 
 function sigmoid(x) {
     return 1 / (1 + Math.exp(-x));
+}
+
+function startGameLoop() {
+    if (!gameInterval) {
+        gameInterval = setInterval(gameLoop, GAME_TICK_INTERVAL);
+        console.log('Game loop started');
+    }
+}
+
+function stopGameLoop() {
+    if (gameInterval) {
+        clearInterval(gameInterval);
+        gameInterval = null;
+        console.log('Game loop stopped');
+        startCheckGameStartInterval();
+    }
+}
+
+async function checkGameStart() {
+    try {
+        const gameState = await fetchGameState();
+        if (gameState.game_started) {
+            startGameLoop();
+            stopCheckGameStartInterval();
+        }
+    } catch (error) {
+        console.error('Error checking game start:', error);
+    }
+}
+
+function startCheckGameStartInterval() {
+    if (!checkGameStartInterval) {
+        checkGameStartInterval = setInterval(checkGameStart, GAME_START_CHECK_INTERVAL);
+        console.log('Checking game start every 5 seconds.');
+    }
+}
+
+function stopCheckGameStartInterval() {
+    if (checkGameStartInterval) {
+        clearInterval(checkGameStartInterval);
+        checkGameStartInterval = null;
+        console.log('Stopped checking game start.');
+    }
 }
 
 module.exports = {
