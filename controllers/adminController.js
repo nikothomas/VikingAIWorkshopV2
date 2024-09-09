@@ -1,7 +1,6 @@
 const { getSupabase } = require('../db/supabase');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const gameController = require('./gameController');
 const { getRobotIcon, getFinalNodeIcon } = require('../iconUtils');
 
 const handleErrors = (res, error, customMessage) => {
@@ -36,34 +35,10 @@ exports.getGameStats = async (req, res) => {
     const supabase = getSupabase();
 
     try {
-        let gameState = await supabase
-            .from('game_state')
-            .select('*')
-            .limit(1)
-            .single();
+        const { data, error } = await supabase.rpc('get_game_stats');
+        if (error) throw error;
 
-        if (!gameState.data) {
-            gameState = await gameController.resetGame();
-        }
-
-        const [{ count: group1Count }, { count: group2Count }, { count: imageCount }] = await Promise.all([
-            supabase.from('vk_demo_db').select('id', { count: 'exact', head: true }).eq('group_number', 1),
-            supabase.from('vk_demo_db').select('id', { count: 'exact', head: true }).eq('group_number', 2),
-            supabase.from('images').select('id', { count: 'exact', head: true })
-        ]);
-
-        res.json({
-            currentRound: gameState.data.current_round,
-            totalUsers: group1Count + group2Count,
-            group1Users: group1Count,
-            group2Users: group2Count,
-            totalImages: imageCount,
-            usedImages: gameState.data.current_round,
-            isRoundComplete: gameState.data.is_round_complete,
-            gameStarted: gameState.data.game_started,
-            gameOver: gameState.data.game_over,
-            isWeightsUpdated: gameState.data.is_weights_updated
-        });
+        res.json(data);
     } catch (error) {
         console.error('Error fetching game stats:', error);
         res.status(500).json({ error: 'Failed to fetch game stats', details: error.message });
@@ -74,28 +49,13 @@ exports.createFinalNodeBot = async (req, res) => {
     const supabase = getSupabase();
 
     try {
-        const { data: existingBot } = await supabase
-            .from('vk_demo_db')
-            .select('id')
-            .eq('group_number', -2)
-            .single();
+        const { data, error } = await supabase.rpc('create_final_node_bot', {
+            p_icon: getFinalNodeIcon()
+        });
 
-        if (existingBot) {
-            return res.status(400).json({ message: 'Final node bot already exists' });
-        }
+        if (error) throw error;
 
-        const finalNodeBotId = uuidv4();
-        const finalNodeIcon = getFinalNodeIcon();
-        await supabase
-            .from('vk_demo_db')
-            .insert({
-                id: finalNodeBotId,
-                group_number: -2,
-                is_bot: true,
-                icon: finalNodeIcon
-            });
-
-        res.json({ message: 'Final node bot created successfully', id: finalNodeBotId });
+        res.json(data);
     } catch (error) {
         console.error('Error creating final node bot:', error);
         res.status(500).json({ error: 'Failed to create final node bot', details: error.message });
@@ -106,13 +66,10 @@ exports.checkFinalNodeBot = async (req, res) => {
     const supabase = getSupabase();
 
     try {
-        const { data: finalNodeBot } = await supabase
-            .from('vk_demo_db')
-            .select('id')
-            .eq('group_number', -2)
-            .single();
+        const { data, error } = await supabase.rpc('check_final_node_bot');
+        if (error) throw error;
 
-        res.json({ exists: !!finalNodeBot, id: finalNodeBot?.id });
+        res.json(data);
     } catch (error) {
         console.error('Error checking final node bot:', error);
         res.status(500).json({ error: 'Failed to check final node bot status', details: error.message });
@@ -134,12 +91,14 @@ exports.assignGroup = async (req, res) => {
     const supabase = getSupabase();
 
     try {
-        await supabase
-            .from('vk_demo_db')
-            .update({ group_number: groupNumber })
-            .eq('id', userID);
+        const { data, error } = await supabase.rpc('assign_group', {
+            p_user_id: userID,
+            p_group_number: groupNumber
+        });
 
-        res.json({ message: `User assigned to group ${groupNumber}` });
+        if (error) throw error;
+
+        res.json(data);
     } catch (error) {
         console.error('Failed to assign user to group:', error);
         res.status(500).json({ error: 'Failed to assign user to group' });
@@ -150,31 +109,10 @@ exports.getUsersInfo = async (req, res) => {
     const supabase = getSupabase();
 
     try {
-        const [
-            { data: waitingUsers },
-            { data: group1Users },
-            { data: group2Users },
-            { data: connections },
-            { data: finalNode }
-        ] = await Promise.all([
-            supabase.from('vk_demo_db').select('id, is_bot, icon').eq('group_number', -1),
-            supabase.from('vk_demo_db').select('id, is_bot, icon').eq('group_number', 1),
-            supabase.from('vk_demo_db').select('id, is_bot, icon').eq('group_number', 2),
-            supabase.from('connections').select('*'),
-            supabase.from('vk_demo_db').select('id, is_bot, icon').eq('group_number, icon', -2).single()
-        ]);
+        const { data, error } = await supabase.rpc('get_users_info');
+        if (error) throw error;
 
-        res.json({
-            waitingUsers,
-            group1Users,
-            group2Users,
-            connections,
-            finalNodeId: finalNode ? finalNode.id : null,
-            groupCounts: {
-                group1Count: group1Users.length,
-                group2Count: group2Users.length
-            }
-        });
+        res.json(data);
     } catch (error) {
         handleErrors(res, error, 'Failed to fetch users info');
     }
@@ -185,68 +123,51 @@ exports.deleteUser = async (req, res) => {
     const supabase = getSupabase();
 
     try {
-        const { data: user, error: fetchError } = await supabase
-            .from('vk_demo_db')
-            .select('group_number')
-            .eq('id', userID)
-            .single();
+        const { data, error } = await supabase.rpc('delete_user', { p_user_id: userID });
+        if (error) throw error;
 
-        if (fetchError) throw fetchError;
-
-        await supabase.from('vk_demo_db').delete().eq('id', userID);
-
-        // Delete connections related to this user
-        await supabase
-            .from('connections')
-            .delete()
-            .or(`source_user_id.eq.${userID},target_user_id.eq.${userID}`);
-
-        if (user.group_number === 1) {
-            await gameController.assignSubgroups();
-        }
-
-        res.json({ message: 'User and related connections deleted successfully.' });
+        res.json(data);
     } catch (error) {
         console.error('Failed to delete user:', error);
         res.status(500).json({ error: 'Failed to delete user' });
     }
 };
 
-// Add this new function to handle the /admin/assign-subgroups route
 exports.assignSubgroups = async (req, res) => {
+    const supabase = getSupabase();
+
     try {
-        await gameController.assignSubgroups();
-        res.json({ message: 'Subgroups assigned successfully' });
+        const { data, error } = await supabase.rpc('assign_subgroups');
+        if (error) throw error;
+
+        res.json(data);
     } catch (error) {
         console.error('Failed to assign subgroups:', error);
         res.status(500).json({ error: 'Failed to assign subgroups' });
     }
 };
 
-
-
 exports.getGameState = async (req, res) => {
     const supabase = getSupabase();
 
     try {
-        const { data: gameState, error } = await supabase
-            .from('game_state')
-            .select('*')
-            .order('current_round', { ascending: false })
-            .limit(1)
-            .single();
-
+        const { data, error } = await supabase.rpc('get_game_state');
         if (error) throw error;
-        res.json(gameState);
+
+        res.json(data);
     } catch (error) {
         handleErrors(res, error, 'Failed to fetch game state');
     }
 };
 
 exports.resetGame = async (req, res) => {
+    const supabase = getSupabase();
+
     try {
-        const result = await gameController.resetGame();
-        res.json(result);
+        const { data, error } = await supabase.rpc('reset_game');
+        if (error) throw error;
+
+        res.json({ message: data });
     } catch (error) {
         console.error('Error resetting game:', error);
         res.status(500).json({ error: 'Failed to reset game', details: error.message });
@@ -254,9 +175,13 @@ exports.resetGame = async (req, res) => {
 };
 
 exports.startGame = async (req, res) => {
+    const supabase = getSupabase();
+
     try {
-        await gameController.startGame();
-        res.json({ message: 'Game started successfully' });
+        const { data, error } = await supabase.rpc('start_game');
+        if (error) throw error;
+
+        res.json(data);
     } catch (error) {
         console.error('Error starting game:', error);
         res.status(500).json({ error: 'Failed to start game' });

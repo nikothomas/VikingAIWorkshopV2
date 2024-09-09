@@ -1,11 +1,10 @@
 // controllers/userController.js
 const { getSupabase } = require('../db/supabase');
-const { getRandomIconUnicode } = require('../iconUtils'); // Import functions from iconUtils
+const { getRandomIconUnicode } = require('../iconUtils');
 
 exports.joinGame = async (req, res) => {
     const { userID } = req.session;
 
-    // Validate that userID exists
     if (!userID) {
         return res.status(400).json({ error: 'User ID not found in session. Please log in again.' });
     }
@@ -13,25 +12,16 @@ exports.joinGame = async (req, res) => {
     const supabase = getSupabase();
 
     try {
-        // Select a random Unicode icon for the user using the external iconUtils script
         const randomIconUnicode = getRandomIconUnicode();
+        const { data, error } = await supabase.rpc('user_operations', {
+            p_operation: 'join_game',
+            p_user_id: userID,
+            p_icon: randomIconUnicode
+        });
 
-        // Insert new user into the vk_demo_db
-        const { error } = await supabase.from('vk_demo_db').insert([
-            {
-                id: userID,
-                group_number: -1, // Default group, will be assigned later
-                icon: randomIconUnicode // Store the randomly chosen Unicode icon
-            }
-        ]);
+        if (error) throw error;
 
-        if (error) {
-            console.error('Database insertion error:', error);
-            throw new Error('Error inserting user into database');
-        }
-
-        // Success response
-        res.json({ message: 'User created successfully with a random icon, waiting for group assignment.' });
+        res.json(data);
     } catch (err) {
         console.error('Error creating user:', err);
         res.status(500).json({ error: 'Failed to create user' });
@@ -43,25 +33,14 @@ exports.checkGroup = async (req, res) => {
     const supabase = getSupabase();
 
     try {
-        const { data: user, error } = await supabase
-            .from('vk_demo_db')
-            .select('group_number')
-            .eq('id', userID)
-            .single();
+        const { data, error } = await supabase.rpc('user_operations', {
+            p_operation: 'check_group',
+            p_user_id: userID
+        });
 
-        if (error) {
-            if (error.code === 'PGRST116') {
-                // No user found, which means the user hasn't joined the game yet
-                return res.json({ assigned: false, message: 'User not found. Please join the game first.' });
-            }
-            throw error;
-        }
+        if (error) throw error;
 
-        if (user.group_number !== -1) {
-            res.json({ assigned: true, groupNumber: user.group_number, userID: userID });
-        } else {
-            res.json({ assigned: false });
-        }
+        res.json(data);
     } catch (err) {
         console.error('Error checking group assignment:', err);
         res.status(500).json({ error: 'Failed to check group assignment' });
@@ -69,9 +48,8 @@ exports.checkGroup = async (req, res) => {
 };
 
 exports.getUserIcon = async (req, res) => {
-    const { userID } = req.params; // Get userID from route parameters
+    const { userID } = req.params;
 
-    // Validate that userID exists
     if (!userID) {
         return res.status(400).json({ error: 'User ID is required.' });
     }
@@ -79,25 +57,18 @@ exports.getUserIcon = async (req, res) => {
     const supabase = getSupabase();
 
     try {
-        const { data: user, error } = await supabase
-            .from('vk_demo_db')
-            .select('icon')
-            .eq('id', userID)
-            .single();
+        const { data, error } = await supabase.rpc('user_operations', {
+            p_operation: 'get_user_icon',
+            p_user_id: userID
+        });
 
-        if (error) {
-            if (error.code === 'PGRST116') {
-                // No user found
-                return res.status(404).json({ error: 'User not found.' });
-            }
-            throw error;
+        if (error) throw error;
+
+        if (data.error) {
+            return res.status(404).json(data);
         }
 
-        if (user && user.icon) {
-            res.json({ icon: user.icon });
-        } else {
-            res.status(404).json({ error: 'Icon not found for this user.' });
-        }
+        res.json(data);
     } catch (err) {
         console.error('Error fetching user icon:', err);
         res.status(500).json({ error: 'Failed to fetch user icon' });
