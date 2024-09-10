@@ -135,7 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getCurrentRound() {
         return fetch('/api/group1/get_image')
-            .then(response => response.json())
+            .then(response=> response.json())
             .then(data => {
                 if (data.round) {
                     console.log(`Fetched current round: ${data.round}`);
