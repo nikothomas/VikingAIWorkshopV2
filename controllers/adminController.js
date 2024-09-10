@@ -187,3 +187,65 @@ exports.startGame = async (req, res) => {
         res.status(500).json({ error: 'Failed to start game' });
     }
 };
+
+exports.submitAnswerForUser = async (req, res) => {
+    const { userID, prediction } = req.body;
+    const supabase = getSupabase();
+
+    try {
+        // First, get the user's group
+        const { data: userData, error: userError } = await supabase
+            .from('vk_demo_db')
+            .select('group_number')
+            .eq('id', userID)
+            .single();
+
+        if (userError) throw userError;
+
+        if (!userData) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const groupNumber = userData.group_number;
+
+        if (groupNumber !== 1 && groupNumber !== 2) {
+            return res.status(400).json({ error: 'User is not in group 1 or 2' });
+        }
+
+        // Now submit the answer
+        const { data, error } = await supabase.rpc('submit_answer_for_user', {
+            p_user_id: userID,
+            p_prediction: prediction,
+            p_group: groupNumber
+        });
+
+        if (error) throw error;
+
+        if (data.error) {
+            return res.status(400).json({ error: data.error });
+        }
+
+        res.json(data);
+    } catch (error) {
+        console.error('Error submitting answer for user:', error);
+        res.status(500).json({ error: 'Failed to submit answer for user' });
+    }
+};
+
+exports.convertUserToBot = async (req, res) => {
+    const { userID } = req.body;
+    const supabase = getSupabase();
+
+    try {
+        const { data, error } = await supabase.rpc('convert_user_to_bot', {
+            p_user_id: userID
+        });
+
+        if (error) throw error;
+
+        res.json(data);
+    } catch (error) {
+        console.error('Error converting user to bot:', error);
+        res.status(500).json({ error: 'Failed to convert user to bot' });
+    }
+};

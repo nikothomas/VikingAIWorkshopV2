@@ -260,6 +260,40 @@ button:hover {
     margin-right: 10px;
 }
 
+.fa-check-circle {
+    color: green;
+    margin-right: 5px;
+}
+
+.fa-times-circle {
+    color: red;
+    margin-right: 5px;
+}
+
+.subgroup-info {
+    margin-left: 10px;
+    font-style: italic;
+    color: #666;
+}
+
+.submit-answer-btn {
+    background-color: #ffc107;
+    color: #000;
+}
+
+.submit-answer-btn:hover {
+    background-color: #e0a800;
+}
+
+.convert-to-bot-btn {
+    background-color: #6c757d;
+    color: #fff;
+}
+
+.convert-to-bot-btn:hover {
+    background-color: #5a6268;
+}
+
 @media (max-width: 768px) {
     .user-lists {
         flex-direction: column;

@@ -40,6 +40,8 @@ router.get('/admin/check-final-node-bot', adminController.checkFinalNodeBot);
 router.post('/admin/reset-game', adminController.resetGame);
 router.post('/admin/start-game', adminController.startGame);
 router.post('/admin/assign-subgroups', adminController.assignSubgroups);
+router.post('/admin/submit-answer-for-user', adminController.submitAnswerForUser);
+router.post('/admin/convert-user-to-bot', adminController.convertUserToBot);
 
 // D3 Visualization route
 router.get('/get-network-data', d3Controller.getNetworkData);

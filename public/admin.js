@@ -37,6 +37,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (event.target.classList.contains('reassign-btn')) {
             const newGroup = event.target.dataset.currentGroup === '1' ? '2' : '1';
             assignGroup(event.target.dataset.userId, newGroup);
+        } else if (event.target.classList.contains('submit-answer-btn')) {
+            submitAnswerForUser(event.target.dataset.userId);
+        } else if (event.target.classList.contains('convert-to-bot-btn')) {
+            convertUserToBot(event.target.dataset.userId);
         }
     });
 
@@ -109,8 +113,15 @@ document.addEventListener('DOMContentLoaded', () => {
             let connectionsInfo = '';
             let buttons = '';
 
-            // Use Unicode from database or default to '\uf007' (user icon)
             const iconUnicode = user.icon ? user.icon : '\uf007';
+            const submissionStatusIcon = user.has_given_input ?
+                '<i class="fas fa-check-circle" style="color: green;"></i>' :
+                '<i class="fas fa-times-circle" style="color: red;"></i>';
+
+            let subgroupInfo = '';
+            if (groupNumber === 1 && user.group_one_subgroup !== null) {
+                subgroupInfo = `<span class="subgroup-info">Subgroup: ${user.group_one_subgroup}</span>`;
+            }
 
             if (groupNumber === -1) {
                 // Waiting users
@@ -118,25 +129,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="assign-btn" data-user-id="${user.id}" data-group="1">Assign to Group 1</button>
                 <button class="assign-btn" data-user-id="${user.id}" data-group="2">Assign to Group 2</button>
             `;
-            } else if (groupNumber === 1) {
-                // Group 1 users
-                const userConnections = connections.filter(conn => conn.source_user_id === user.id);
-                connectionsInfo = `<span>Connections: ${userConnections.map(conn => conn.target_user_id).join(', ')}</span>`;
-                buttons = `<button class="reassign-btn" data-user-id="${user.id}" data-current-group="1">Reassign</button>`;
-            } else if (groupNumber === 2) {
-                // Group 2 users
-                const finalNodeConnection = connections.find(conn =>
-                    conn.source_user_id === user.id && conn.target_user_id === finalNodeId
-                );
-                connectionsInfo = finalNodeConnection
-                    ? `<span class="connected">Connected to Final Node (ID: ${finalNodeId})</span>`
-                    : '<span class="not-connected">Not connected to Final Node</span>';
-                buttons = `<button class="reassign-btn" data-user-id="${user.id}" data-current-group="2">Reassign</button>`;
+            } else if (groupNumber === 1 || groupNumber === 2) {
+                // Group 1 and Group 2 users
+                buttons = `
+                <button class="reassign-btn" data-user-id="${user.id}" data-current-group="${groupNumber}">Reassign</button>
+                ${!user.has_given_input ? `<button class="submit-answer-btn" data-user-id="${user.id}">Submit Answer</button>` : ''}
+                ${!user.is_bot ? `<button class="convert-to-bot-btn" data-user-id="${user.id}">Convert to Bot</button>` : ''}
+            `;
+
+                if (groupNumber === 1) {
+                    const userConnections = connections.filter(conn => conn.source_user_id === user.id);
+                    connectionsInfo = `<span>Connections: ${userConnections.map(conn => conn.target_user_id).join(', ')}</span>`;
+                } else if (groupNumber === 2) {
+                    const finalNodeConnection = connections.find(conn =>
+                        conn.source_user_id === user.id && conn.target_user_id === finalNodeId
+                    );
+                    connectionsInfo = finalNodeConnection
+                        ? `<span class="connected">Connected to Final Node (ID: ${finalNodeId})</span>`
+                        : '<span class="not-connected">Not connected to Final Node</span>';
+                }
             }
 
-            // Insert the Unicode icon using the data-icon attribute
             li.innerHTML = `
-            <span class="user-icon-id"><i class="fa-icon" data-icon="${iconUnicode}"></i> ${user.is_bot ? 'Bot' : 'Human'} ID: ${user.id}</span>
+            <span class="user-icon-id">
+                <i class="fa-icon" data-icon="${iconUnicode}"></i> 
+                ${submissionStatusIcon}
+                ${user.is_bot ? 'Bot' : 'Human'} ID: ${user.id}
+            </span>
+            ${subgroupInfo}
             ${connectionsInfo}
             ${buttons}
             <button class="delete-btn" data-user-id="${user.id}">Delete</button>
@@ -257,6 +277,55 @@ document.addEventListener('DOMContentLoaded', () => {
             .catch(error => {
                 console.error('Error deleting user:', error);
                 showMessage('Failed to delete user.', 'error');
+            });
+    }
+
+    function submitAnswerForUser(userId) {
+        // First, get the current round
+        fetch('/api/admin/game-stats', { headers: getAuthHeaders() })
+            .then(response => response.json())
+            .then(data => {
+                const currentRound = data.currentRound;
+                const prediction = Math.random() < 0.5 ? -1 : 1; // Randomly choose -1 or 1
+
+                // Now submit the answer
+                return fetch('/api/admin/submit-answer-for-user', {
+                    method: 'POST',
+                    headers: {
+                        ...getAuthHeaders(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ userID: userId, prediction, round: currentRound })
+                });
+            })
+            .then(response => response.json())
+            .then(data => {
+                showMessage(data.message, 'success');
+                fetchUsersInfo();
+            })
+            .catch(error => {
+                console.error('Error submitting answer for user:', error);
+                showMessage('Failed to submit answer for user.', 'error');
+            });
+    }
+
+    function convertUserToBot(userId) {
+        fetch('/api/admin/convert-user-to-bot', {
+            method: 'POST',
+            headers: {
+                ...getAuthHeaders(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ userID: userId })
+        })
+            .then(response => response.json())
+            .then(data => {
+                showMessage(data.message, 'success');
+                fetchUsersInfo();
+            })
+            .catch(error => {
+                console.error('Error converting user to bot:', error);
+                showMessage('Failed to convert user to bot.', 'error');
             });
     }
 
