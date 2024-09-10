@@ -3,8 +3,8 @@ const { createCanvas } = require('canvas');
 const fs = require('fs');
 const path = require('path');
 
-const GAME_TICK_INTERVAL = 5000; // 5 seconds
-const GAME_START_CHECK_INTERVAL = 5000; // 5 seconds
+const GAME_TICK_INTERVAL = 2000; // 2 seconds
+const GAME_START_CHECK_INTERVAL = 10000; // 10 seconds
 
 let gameInterval;
 let checkGameStartInterval;

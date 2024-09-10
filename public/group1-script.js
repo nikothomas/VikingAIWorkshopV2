@@ -187,5 +187,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Start the update cycle
     checkForUpdates();
-    const updateInterval = setInterval(checkForUpdates, 5000);
+    const updateInterval = setInterval(checkForUpdates, 1000);
 });

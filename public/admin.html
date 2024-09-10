@@ -68,6 +68,22 @@
             </select>
             <button type="submit">Upload Image</button>
         </form>
+        <h2>Batch Image Upload</h2>
+        <form id="batch-image-upload-form" enctype="multipart/form-data">
+            <input type="file" id="batch-image-input" multiple accept="image/*">
+            <button type="submit">Upload Images</button>
+        </form>
+        <div id="image-preview-container"></div>
+
+        <template id="image-preview-template">
+            <div class="image-preview">
+                <img src="" alt="Image preview" class="preview-img">
+                <select class="correct-answer-select">
+                    <option value="-1">Not Phytoplankton</option>
+                    <option value="1">Phytoplankton</option>
+                </select>
+            </div>
+        </template>
         <div id="upload-status" class="status-message"></div>
     </div>
 </div>
